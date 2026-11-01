@@ -1,0 +1,945 @@
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Lock,
+  Unlock,
+  Download,
+  Search,
+  Filter,
+  CheckCircle2,
+  Clock,
+  MessageSquare,
+  FileText,
+  Trash2,
+  Edit2,
+  Plus,
+  RefreshCw,
+  Building2,
+  Layers,
+  Phone,
+  Mail,
+  User,
+  Shield,
+  Save,
+} from 'lucide-react';
+import { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../../types';
+import { StorageService } from '../../services/storageService';
+
+interface AdminDashboardProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onDataChange?: () => void;
+}
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  isOpen,
+  onClose,
+  onDataChange,
+}) => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('baba_admin_auth') === 'true';
+  });
+  const [pinCode, setPinCode] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Active Tab: 'enquiries' | 'products' | 'references' | 'contact'
+  const [activeTab, setActiveTab] = useState<'enquiries' | 'products' | 'references' | 'contact'>('enquiries');
+
+  // Enquiries state
+  const [enquiries, setEnquiries] = useState<BusinessEnquiry[]>([]);
+  const [enquirySearch, setEnquirySearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedEnquiry, setSelectedEnquiry] = useState<BusinessEnquiry | null>(null);
+
+  // Products state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // References state
+  const [references, setReferences] = useState<CustomerReference[]>([]);
+  const [newRefName, setNewRefName] = useState('');
+  const [newRefShort, setNewRefShort] = useState('');
+  const [newRefSector, setNewRefSector] = useState('');
+
+  // Contact state
+  const [contactInfo, setContactInfo] = useState<BusinessContactInfo>(StorageService.getContactInfo());
+  const [contactSaved, setContactSaved] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && isAuthenticated) {
+      loadAllData();
+    }
+  }, [isOpen, isAuthenticated]);
+
+  const loadAllData = () => {
+    setEnquiries(StorageService.getEnquiries());
+    setProducts(StorageService.getProducts());
+    setReferences(StorageService.getReferences());
+    setContactInfo(StorageService.getContactInfo());
+  };
+
+  if (!isOpen) return null;
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pinCode.trim()) {
+      setAuthError('Please enter admin passcode.');
+      return;
+    }
+    setIsSubmitting(true);
+    setAuthError('');
+
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ passcode: pinCode.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('baba_admin_auth', 'true');
+        if (data.token) {
+          sessionStorage.setItem('baba_admin_token', data.token);
+        }
+        setAuthError('');
+        setPinCode('');
+        loadAllData();
+      } else {
+        setAuthError(data.error || 'Invalid admin passcode. Access denied.');
+      }
+    } catch (err) {
+      setAuthError('Unable to connect to security server. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('baba_admin_auth');
+    sessionStorage.removeItem('baba_admin_token');
+  };
+
+  // Enquiry Actions
+  const handleUpdateStatus = (id: string, status: BusinessEnquiry['status']) => {
+    const updated = StorageService.updateEnquiryStatus(id, status);
+    setEnquiries([...updated]);
+    if (selectedEnquiry && selectedEnquiry.id === id) {
+      setSelectedEnquiry({ ...selectedEnquiry, status });
+    }
+    onDataChange?.();
+  };
+
+  const handleSaveNotes = (id: string, notes: string) => {
+    const target = enquiries.find((e) => e.id === id);
+    if (target) {
+      const updated = StorageService.updateEnquiryStatus(id, target.status, notes);
+      setEnquiries([...updated]);
+      if (selectedEnquiry && selectedEnquiry.id === id) {
+        setSelectedEnquiry({ ...selectedEnquiry, internalNotes: notes });
+      }
+    }
+  };
+
+  const handleDeleteEnquiry = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this enquiry?')) {
+      const updated = StorageService.deleteEnquiry(id);
+      setEnquiries([...updated]);
+      if (selectedEnquiry?.id === id) {
+        setSelectedEnquiry(null);
+      }
+      onDataChange?.();
+    }
+  };
+
+  const handleExportCSV = () => {
+    const csvContent = StorageService.exportEnquiriesToCSV();
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `baba_enterprises_enquiries_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filtered Enquiries
+  const filteredEnquiries = enquiries.filter((e) => {
+    const matchStatus = statusFilter === 'all' || e.status === statusFilter;
+    const matchSearch =
+      enquirySearch.trim() === '' ||
+      e.companyName.toLowerCase().includes(enquirySearch.toLowerCase()) ||
+      e.contactPerson.toLowerCase().includes(enquirySearch.toLowerCase()) ||
+      e.referenceNumber.toLowerCase().includes(enquirySearch.toLowerCase()) ||
+      e.productCategory.toLowerCase().includes(enquirySearch.toLowerCase());
+    return matchStatus && matchSearch;
+  });
+
+  // Reference Actions
+  const handleAddReference = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRefName.trim() || !newRefShort.trim()) return;
+
+    const newRef: CustomerReference = {
+      id: 'ref-' + Date.now(),
+      name: newRefName.trim(),
+      shortName: newRefShort.trim(),
+      category: 'Industrial Reference',
+      sector: newRefSector.trim() || 'General Engineering',
+      isActive: true,
+    };
+
+    const updated = [newRef, ...references];
+    setReferences(updated);
+    StorageService.saveReferences(updated);
+    setNewRefName('');
+    setNewRefShort('');
+    setNewRefSector('');
+    onDataChange?.();
+  };
+
+  const handleToggleReference = (id: string) => {
+    const updated = references.map((r) =>
+      r.id === id ? { ...r, isActive: !r.isActive } : r
+    );
+    setReferences(updated);
+    StorageService.saveReferences(updated);
+    onDataChange?.();
+  };
+
+  // Save Contact
+  const handleSaveContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    StorageService.saveContactInfo(contactInfo);
+    setContactSaved(true);
+    setTimeout(() => setContactSaved(false), 2500);
+    onDataChange?.();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-hidden"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl max-w-5xl w-full h-[90vh] border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top Header */}
+        <div className="bg-[#102F59] text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="bg-white rounded-lg px-2.5 py-1.5 shadow-xs shrink-0 max-w-[180px]">
+              <img
+                src="/assets/aistudio/Baba_Header_b3cf9ca8.png"
+                alt="BABA ENTERPRISES"
+                className="w-full h-auto object-contain block"
+              />
+            </div>
+            <div className="hidden sm:block">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-blue-200">
+                  ADMINISTRATION PORTAL
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Enquiry Management, Component Architecture & Business Settings
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {isAuthenticated && (
+              <button
+                onClick={handleLogout}
+                className="text-xs text-blue-200 hover:text-white px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+              >
+                Log Out
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-blue-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Close Admin Portal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        {!isAuthenticated ? (
+          /* Authentication Screen */
+          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50">
+            <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 shadow-md text-center space-y-6">
+              <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-xs inline-block max-w-[220px] mx-auto">
+                <img
+                  src="/assets/aistudio/Baba_Header_b3cf9ca8.png"
+                  alt="BABA ENTERPRISES"
+                  className="w-full h-auto object-contain block"
+                />
+              </div>
+
+              <div>
+                <h3 className="font-heading text-xl font-bold text-slate-900">
+                  Protected Management Desk
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Enter administrative passcode to manage customer RFQs, product records, and registered business
+                  details.
+                </p>
+              </div>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <input
+                    type="password"
+                    placeholder="Enter Admin Passcode"
+                    value={pinCode}
+                    onChange={(e) => setPinCode(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full text-center px-4 py-2.5 text-sm font-mono tracking-widest rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0755A5] disabled:bg-slate-100 disabled:cursor-not-allowed"
+                  />
+                  {authError && <p className="mt-1.5 text-xs text-red-600 font-medium leading-normal">{authError}</p>}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 bg-[#102F59] hover:bg-[#0755A5] disabled:bg-slate-400 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Verifying Passcode...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span>Unlock Admin Portal</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          /* Authenticated Dashboard Tabs */
+          <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+            {/* Tab Navigation */}
+            <div className="bg-white border-b border-slate-200 px-6 flex items-center gap-6 overflow-x-auto shrink-0">
+              <button
+                onClick={() => setActiveTab('enquiries')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'enquiries'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Customer Enquiries ({enquiries.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'products'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Product Catalogue ({products.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('references')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'references'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>Customer References ({references.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('contact')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'contact'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Phone className="w-4 h-4" />
+                <span>Business & Contact Info</span>
+              </button>
+            </div>
+
+            {/* TAB 1: ENQUIRIES */}
+            {activeTab === 'enquiries' && (
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                {/* Left Enquiry List */}
+                <div className="w-full md:w-5/12 border-r border-slate-200 flex flex-col bg-white overflow-hidden">
+                  {/* Search and Filters */}
+                  <div className="p-4 border-b border-slate-200 space-y-3 bg-slate-50">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search company, contact, or ref..."
+                        value={enquirySearch}
+                        onChange={(e) => setEnquirySearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#0755A5]"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                        {['all', 'New', 'Contacted', 'Quotation Sent', 'In Discussion', 'Closed'].map((st) => (
+                          <button
+                            key={st}
+                            onClick={() => setStatusFilter(st)}
+                            className={`px-2 py-0.5 text-[11px] rounded transition-colors whitespace-nowrap ${
+                              statusFilter === st
+                                ? 'bg-[#102F59] text-white font-medium'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {st}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={handleExportCSV}
+                        className="p-1.5 text-slate-600 hover:text-[#0755A5] hover:bg-slate-200 rounded transition-colors shrink-0"
+                        title="Download CSV"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List Container */}
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    {filteredEnquiries.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-500">
+                        No enquiries match the current criteria.
+                      </div>
+                    ) : (
+                      filteredEnquiries.map((enq) => {
+                        const isSelected = selectedEnquiry?.id === enq.id;
+                        return (
+                          <div
+                            key={enq.id}
+                            onClick={() => setSelectedEnquiry(enq)}
+                            className={`p-4 cursor-pointer transition-colors ${
+                              isSelected ? 'bg-blue-50/70 border-l-4 border-[#0755A5]' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[11px] mb-1">
+                              <span className="font-mono font-bold text-slate-700">
+                                {enq.referenceNumber}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                  enq.status === 'New'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : enq.status === 'Quotation Sent'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : enq.status === 'In Discussion'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : enq.status === 'Closed'
+                                    ? 'bg-slate-100 text-slate-600'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {enq.status}
+                              </span>
+                            </div>
+
+                            <h4 className="font-heading text-sm font-bold text-slate-900 truncate">
+                              {enq.companyName}
+                            </h4>
+
+                            <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                              <span className="truncate">{enq.contactPerson}</span>
+                              <span className="text-[11px] font-mono shrink-0">
+                                {new Date(enq.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+
+                            <div className="mt-2 text-xs text-slate-700 font-medium truncate">
+                              {enq.productCategory} · {enq.quantityRequired}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Enquiry Detail View */}
+                <div className="flex-1 bg-white p-6 overflow-y-auto">
+                  {selectedEnquiry ? (
+                    <div className="space-y-6 max-w-2xl">
+                      {/* Top Action Bar */}
+                      <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+                        <div>
+                          <span className="text-xs font-mono text-slate-400">REFERENCE NUMBER</span>
+                          <h3 className="font-heading text-xl font-bold text-[#102F59]">
+                            {selectedEnquiry.referenceNumber}
+                          </h3>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedEnquiry.status}
+                            onChange={(e) =>
+                              handleUpdateStatus(selectedEnquiry.id, e.target.value as BusinessEnquiry['status'])
+                            }
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white"
+                          >
+                            <option value="New">Status: New</option>
+                            <option value="Contacted">Status: Contacted</option>
+                            <option value="Quotation Sent">Status: Quotation Sent</option>
+                            <option value="In Discussion">Status: In Discussion</option>
+                            <option value="Closed">Status: Closed</option>
+                          </select>
+
+                          <button
+                            onClick={() => handleDeleteEnquiry(selectedEnquiry.id)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete Enquiry"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Contact Specs */}
+                      <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider block">Company</span>
+                          <span className="font-bold text-slate-800 text-sm block mt-0.5">
+                            {selectedEnquiry.companyName}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider block">Contact Person</span>
+                          <span className="font-bold text-slate-800 text-sm block mt-0.5">
+                            {selectedEnquiry.contactPerson}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider block">Email</span>
+                          <a href={`mailto:${selectedEnquiry.email}`} className="text-[#0755A5] hover:underline font-mono">
+                            {selectedEnquiry.email}
+                          </a>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider block">Mobile</span>
+                          <a href={`tel:${selectedEnquiry.mobile}`} className="font-mono font-bold text-slate-900">
+                            +91 {selectedEnquiry.mobile}
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Requirements */}
+                      <div className="space-y-3">
+                        <h4 className="font-heading text-xs font-bold text-slate-900 uppercase tracking-wider">
+                          Product & Supply Parameters
+                        </h4>
+                        <div className="p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Component Category:</span>
+                            <span className="font-semibold text-slate-900">{selectedEnquiry.productCategory}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Quantity Required:</span>
+                            <span className="font-semibold text-slate-900">{selectedEnquiry.quantityRequired}</span>
+                          </div>
+                          {selectedEnquiry.technicalRequirements && (
+                            <div className="pt-2 border-t border-slate-100">
+                              <span className="text-slate-500 block mb-1">Technical Requirements:</span>
+                              <p className="text-slate-800 bg-slate-50 p-2.5 rounded font-mono text-xs">
+                                {selectedEnquiry.technicalRequirements}
+                              </p>
+                            </div>
+                          )}
+                          {selectedEnquiry.message && (
+                            <div className="pt-2 border-t border-slate-100">
+                              <span className="text-slate-500 block mb-1">Buyer Notes / Message:</span>
+                              <p className="text-slate-800">{selectedEnquiry.message}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Attachment View */}
+                      {selectedEnquiry.drawingFileName && (
+                        <div>
+                          <h4 className="font-heading text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
+                            Attached Drawing / Technical File
+                          </h4>
+                          <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-[#0755A5]" />
+                              <span className="font-medium text-slate-800">{selectedEnquiry.drawingFileName}</span>
+                            </div>
+                            {selectedEnquiry.drawingFileData && (
+                              <a
+                                href={selectedEnquiry.drawingFileData}
+                                download={selectedEnquiry.drawingFileName}
+                                className="px-3 py-1 bg-[#0755A5] text-white rounded text-[11px] font-semibold hover:bg-[#102F59]"
+                              >
+                                Download Attachment
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Internal Notes */}
+                      <div className="space-y-2">
+                        <h4 className="font-heading text-xs font-bold text-slate-900 uppercase tracking-wider">
+                          Internal Notes & Follow-up Log
+                        </h4>
+                        <textarea
+                          rows={3}
+                          placeholder="Log follow-up calls, drawing approvals, or quote numbers..."
+                          defaultValue={selectedEnquiry.internalNotes || ''}
+                          onBlur={(e) => handleSaveNotes(selectedEnquiry.id, e.target.value)}
+                          className="w-full p-3 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0755A5]"
+                        />
+                        <span className="text-[11px] text-slate-400 block">
+                          Notes auto-save when clicking outside the field.
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-center p-8 text-slate-400 text-xs">
+                      Select an enquiry from the left list to view technical specifications and update commercial status.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: PRODUCTS */}
+            {activeTab === 'products' && (
+              <div className="flex-1 p-6 overflow-y-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-heading text-lg font-bold text-slate-900">
+                      Product Catalogue Master
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Edit component descriptions, update material notes, or toggle catalog display.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {products.map((prod) => (
+                    <div
+                      key={prod.id}
+                      className="p-4 bg-white rounded-xl border border-slate-200 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center gap-3 mb-3">
+                          <img
+                            src={prod.image}
+                            alt={prod.name}
+                            className="w-14 h-14 rounded-lg object-cover bg-slate-100 border border-slate-200"
+                          />
+                          <div>
+                            <h4 className="font-heading text-sm font-bold text-slate-900">{prod.name}</h4>
+                            <span className="text-[11px] text-[#0755A5] font-medium">{prod.categoryLabel}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 line-clamp-2">{prod.shortDescription}</p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-emerald-600 font-medium">Active in Catalogue</span>
+                        <button
+                          onClick={() => setEditingProduct(prod)}
+                          className="text-[#0755A5] hover:underline font-semibold flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Edit Modal Dialog */}
+                {editingProduct && (
+                  <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4">
+                      <div className="flex items-center justify-between border-b pb-3">
+                        <h4 className="font-heading font-bold text-slate-900">Edit Component</h4>
+                        <button onClick={() => setEditingProduct(null)}>
+                          <X className="w-5 h-5 text-slate-400" />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Product Name</label>
+                        <input
+                          type="text"
+                          value={editingProduct.name}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                          className="w-full px-3 py-2 text-xs border rounded-lg"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Short Description</label>
+                        <textarea
+                          rows={2}
+                          value={editingProduct.shortDescription}
+                          onChange={(e) =>
+                            setEditingProduct({ ...editingProduct, shortDescription: e.target.value })
+                          }
+                          className="w-full px-3 py-2 text-xs border rounded-lg"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex justify-end gap-2">
+                        <button
+                          onClick={() => setEditingProduct(null)}
+                          className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            const updated = StorageService.updateProduct(editingProduct);
+                            setProducts([...updated]);
+                            setEditingProduct(null);
+                            onDataChange?.();
+                          }}
+                          className="px-4 py-2 text-xs bg-[#0755A5] text-white font-semibold rounded-lg hover:bg-[#102F59]"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: REFERENCES */}
+            {activeTab === 'references' && (
+              <div className="flex-1 p-6 overflow-y-auto space-y-6">
+                <div>
+                  <h3 className="font-heading text-lg font-bold text-slate-900">
+                    Manage Customer References
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Add or toggle enterprise and institution references displayed on the website.
+                  </p>
+                </div>
+
+                {/* Add Reference Form */}
+                <form onSubmit={handleAddReference} className="p-4 rounded-xl bg-white border border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Full Entity Name *"
+                    value={newRefName}
+                    onChange={(e) => setNewRefName(e.target.value)}
+                    className="px-3 py-2 text-xs border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Abbreviation (e.g. BHEL) *"
+                    value={newRefShort}
+                    onChange={(e) => setNewRefShort(e.target.value)}
+                    className="px-3 py-2 text-xs border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Sector / Industry Domain"
+                    value={newRefSector}
+                    onChange={(e) => setNewRefSector(e.target.value)}
+                    className="px-3 py-2 text-xs border rounded-lg"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Reference</span>
+                  </button>
+                </form>
+
+                {/* Reference Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {references.map((ref) => (
+                    <div
+                      key={ref.id}
+                      className="p-4 rounded-xl bg-white border border-slate-200 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        {ref.logo && (
+                          <div className="w-12 h-10 p-1 bg-white border border-slate-200 rounded flex items-center justify-center shrink-0 shadow-xs">
+                            <img src={ref.logo} alt={ref.shortName} className="max-h-full max-w-full object-contain" />
+                          </div>
+                        )}
+                        <div>
+                          <span className="font-mono text-sm font-bold text-[#0755A5]">{ref.shortName}</span>
+                          <h4 className="font-heading text-xs font-bold text-slate-900 mt-0.5">{ref.name}</h4>
+                          <span className="text-[11px] text-slate-500 block">{ref.sector}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleToggleReference(ref.id)}
+                        className={`px-3 py-1 rounded text-[11px] font-semibold transition-colors ${
+                          ref.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}
+                      >
+                        {ref.isActive ? 'Active' : 'Hidden'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: CONTACT & BUSINESS */}
+            {activeTab === 'contact' && (
+              <div className="flex-1 p-6 overflow-y-auto max-w-2xl">
+                <div className="mb-6">
+                  <h3 className="font-heading text-lg font-bold text-slate-900">
+                    Business Profile & Contact Settings
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Verified registered business details in Bhosari, Pune.
+                  </p>
+                </div>
+
+                <form onSubmit={handleSaveContact} className="space-y-4 bg-white p-6 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Company Name</label>
+                    <input
+                      type="text"
+                      value={contactInfo.companyName}
+                      disabled
+                      className="w-full px-3 py-2 text-xs border rounded-lg bg-slate-50 text-slate-700"
+                    />
+                    <span className="text-[11px] text-slate-400">Fixed to verified name: BABA ENTERPRISES</span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">GSTIN</label>
+                    <input
+                      type="text"
+                      value={contactInfo.gstin}
+                      disabled
+                      className="w-full px-3 py-2 text-xs border rounded-lg font-mono bg-slate-50 text-slate-700"
+                    />
+                    <span className="text-[11px] text-slate-400">GSTIN: 27AGCPB8322L1ZG (Maharashtra, Code: 27)</span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Address Line 1</label>
+                    <input
+                      type="text"
+                      value={contactInfo.addressLine1}
+                      onChange={(e) => setContactInfo({ ...contactInfo, addressLine1: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Address Line 2 (City / Pincode)</label>
+                    <input
+                      type="text"
+                      value={contactInfo.addressLine2}
+                      onChange={(e) => setContactInfo({ ...contactInfo, addressLine2: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border rounded-lg"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">Primary Phone</label>
+                      <input
+                        type="tel"
+                        value={contactInfo.phones[0]}
+                        onChange={(e) => {
+                          const updated = [...contactInfo.phones];
+                          updated[0] = e.target.value;
+                          setContactInfo({ ...contactInfo, phones: updated });
+                        }}
+                        className="w-full px-3 py-2 text-xs border rounded-lg font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">Secondary Phone</label>
+                      <input
+                        type="tel"
+                        value={contactInfo.phones[1] || ''}
+                        onChange={(e) => {
+                          const updated = [...contactInfo.phones];
+                          updated[1] = e.target.value;
+                          setContactInfo({ ...contactInfo, phones: updated });
+                        }}
+                        className="w-full px-3 py-2 text-xs border rounded-lg font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Operating Hours</label>
+                    <input
+                      type="text"
+                      value={contactInfo.operatingHours}
+                      onChange={(e) => setContactInfo({ ...contactInfo, operatingHours: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border rounded-lg"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between">
+                    {contactSaved ? (
+                      <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Settings Saved Successfully</span>
+                      </span>
+                    ) : <span />}
+
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save Information</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

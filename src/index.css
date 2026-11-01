@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --font-heading: 'Montserrat', sans-serif;
+  --font-display: 'Sora', 'Montserrat', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-brand-navy: #102F59;
+  --color-brand-blue: #0755A5;
+  --color-brand-saffron: #F28C00;
+  --color-brand-green: #168B43;
+  --color-brand-charcoal: #252B33;
+  --color-brand-silver: #E8EBEF;
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #252B33;
+    background-color: #F8FAFC;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Montserrat', sans-serif;
+  }
+}
+
+.font-heading {
+  font-family: 'Montserrat', sans-serif;
+}
+
+.font-display {
+  font-family: 'Sora', 'Montserrat', sans-serif;
+}
+
+/* Marathi Devanagari Typography Override */
+html[lang="mr"] body,
+html[lang="mr"] .font-body {
+  font-family: 'Noto Sans Devanagari', 'Inter', sans-serif;
+}
+
+html[lang="mr"] h1,
+html[lang="mr"] h2,
+html[lang="mr"] h3,
+html[lang="mr"] h4,
+html[lang="mr"] h5,
+html[lang="mr"] h6,
+html[lang="mr"] .font-heading,
+html[lang="mr"] .font-display {
+  font-family: 'Noto Sans Devanagari', 'Montserrat', sans-serif;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print styling for quotation sheets / enquiry cards */
+@media print {
+  header, footer, nav, button {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}

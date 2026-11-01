@@ -1,0 +1,8 @@
+{
+  "name": "BABA ENTERPRISES - Industrial Rubber & Plastic Components",
+  "description": "BABA ENTERPRISES is an industrial rubber and plastic components supplier based in Bhosari, Pune, Maharashtra, offering precision rubber moulded products, sealing solutions, and engineering supplies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
