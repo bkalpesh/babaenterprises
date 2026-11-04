@@ -21,9 +21,15 @@ import {
   User,
   Shield,
   Save,
+  Receipt,
+  FileSpreadsheet,
+  Printer,
+  ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 import { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../../types';
 import { StorageService } from '../../services/storageService';
+import { ApiService, StagingInvoice, StagingQuotation } from '../../services/apiService';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -43,14 +49,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Active Tab: 'enquiries' | 'products' | 'references' | 'contact'
-  const [activeTab, setActiveTab] = useState<'enquiries' | 'products' | 'references' | 'contact'>('enquiries');
+  // Active Tab: 'enquiries' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'
+  const [activeTab, setActiveTab] = useState<'enquiries' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'>('enquiries');
 
   // Enquiries state
   const [enquiries, setEnquiries] = useState<BusinessEnquiry[]>([]);
   const [enquirySearch, setEnquirySearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedEnquiry, setSelectedEnquiry] = useState<BusinessEnquiry | null>(null);
+
+  // Invoices & Quotations state
+  const [invoices, setInvoices] = useState<StagingInvoice[]>([]);
+  const [quotations, setQuotations] = useState<StagingQuotation[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<StagingInvoice | null>(null);
+  const [invoiceActionLoading, setInvoiceActionLoading] = useState(false);
+  const [invoiceError, setInvoiceError] = useState('');
+  const [invoiceSuccess, setInvoiceSuccess] = useState('');
 
   // Products state
   const [products, setProducts] = useState<Product[]>([]);
@@ -72,11 +86,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [isOpen, isAuthenticated]);
 
-  const loadAllData = () => {
+  const loadAllData = async () => {
     setEnquiries(StorageService.getEnquiries());
     setProducts(StorageService.getProducts());
     setReferences(StorageService.getReferences());
     setContactInfo(StorageService.getContactInfo());
+    try {
+      const invList = await ApiService.getInvoices();
+      setInvoices(invList);
+      const qteList = await ApiService.getQuotations();
+      setQuotations(qteList);
+    } catch {
+      // Offline fallback
+    }
   };
 
   if (!isOpen) return null;
@@ -99,7 +121,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         body: JSON.stringify({ passcode: pinCode.trim() }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as any;
 
       if (response.ok && data.success) {
         setIsAuthenticated(true);
@@ -344,6 +366,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 <MessageSquare className="w-4 h-4" />
                 <span>Customer Enquiries ({enquiries.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('quotations')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'quotations'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Quotations ({quotations.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'invoices'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>GST Tax Invoices ({invoices.length})</span>
               </button>
 
               <button
@@ -631,6 +677,308 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* TAB: QUOTATIONS */}
+            {activeTab === 'quotations' && (
+              <div className="flex-1 p-6 overflow-y-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-heading text-lg font-bold text-slate-900">
+                      Industrial Quotations Desk
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Issue formal price offers with sequence prefix BE/QT/26-27/ and convert accepted quotes into GST tax invoices.
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const buyerName = window.prompt('Enter Buyer / Company Name:');
+                      if (!buyerName) return;
+                      const buyerGstin = window.prompt('Enter Buyer GSTIN (Optional, leave blank if B2C):') || undefined;
+                      const itemDesc = window.prompt('Enter Component Description (e.g. Precision Rubber Washers NBR 70):') || 'Custom Rubber Component';
+                      const qty = Number(window.prompt('Enter Quantity (Nos):', '1000') || 1000);
+                      const rate = Number(window.prompt('Enter Unit Rate in Rupees (e.g. 15.50):', '15.00') || 15);
+                      
+                      try {
+                        const res = await ApiService.createQuotation({
+                          buyer_name: buyerName.trim(),
+                          buyer_gstin: buyerGstin?.trim(),
+                          buyer_state_code: '27',
+                          buyer_state_name: 'Maharashtra',
+                          items: [
+                            {
+                              itemDescription: itemDesc,
+                              hsnCode: '4016',
+                              quantityMicrounits: qty * 1_000_000,
+                              unitPricePaise: Math.round(rate * 100),
+                              gstRateBps: 1800,
+                            }
+                          ]
+                        });
+                        if (res.success) {
+                          alert(`Quotation ${res.quotation.quotation_number} created successfully!`);
+                          loadAllData();
+                        } else {
+                          alert(`Error: ${res.error}`);
+                        }
+                      } catch (err: any) {
+                        alert(`Failed: ${err.message}`);
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Quotation</span>
+                  </button>
+                </div>
+
+                {quotations.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500 text-xs">
+                    No quotations generated yet. Click "Create Quotation" to issue an initial commercial quote.
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                        <tr>
+                          <th className="p-3">Quotation No.</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Buyer / Company</th>
+                          <th className="p-3 text-right">Taxable (₹)</th>
+                          <th className="p-3 text-right">Total (₹)</th>
+                          <th className="p-3 text-center">Status</th>
+                          <th className="p-3 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {quotations.map((q) => (
+                          <tr key={q.id} className="hover:bg-slate-50/80">
+                            <td className="p-3 font-mono font-bold text-[#102F59]">{q.quotation_number}</td>
+                            <td className="p-3 text-slate-500">{q.quotation_date}</td>
+                            <td className="p-3">
+                              <div className="font-bold text-slate-900">{q.buyer_name}</div>
+                              {q.buyer_company && <div className="text-[11px] text-slate-500">{q.buyer_company}</div>}
+                            </td>
+                            <td className="p-3 text-right font-mono">₹{(q.taxable_amount_paise / 100).toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-900">₹{(q.total_amount_paise / 100).toFixed(2)}</td>
+                            <td className="p-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                q.status === 'Converted' ? 'bg-purple-100 text-purple-800' :
+                                q.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {q.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              {q.status !== 'Converted' ? (
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm(`Convert Quotation ${q.quotation_number} to a Draft GST Tax Invoice?`)) {
+                                      const res = await ApiService.convertQuotationToInvoice(q.id);
+                                      if (res.success) {
+                                        alert('Quotation converted to Draft Invoice successfully!');
+                                        loadAllData();
+                                        setActiveTab('invoices');
+                                      } else {
+                                        alert(`Error: ${res.error}`);
+                                      }
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded transition-colors"
+                                >
+                                  Convert to Invoice
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-purple-700 font-medium">Invoice Generated</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: GST TAX INVOICES */}
+            {activeTab === 'invoices' && (
+              <div className="flex-1 p-6 overflow-y-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-heading text-lg font-bold text-slate-900">
+                      GST Tax Invoices Master (Prefix: BE/26-27/)
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Manage draft tax invoices, allocate immutable sequential numbering, and print statutory GST tax invoices.
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const buyerName = window.prompt('Enter Buyer Legal Name:');
+                      if (!buyerName) return;
+                      const buyerAddr = window.prompt('Enter Buyer Factory / Office Address:', 'MIDC Industrial Area, Pune') || 'Bhosari MIDC';
+                      const buyerGstin = window.prompt('Enter Buyer GSTIN (e.g. 27AAACB2026R1Z9 or leave empty for B2C):') || undefined;
+                      const itemDesc = window.prompt('Enter Item Description:', 'High-Performance Rubber Bushes Shore 65A') || 'Precision Rubber Components';
+                      const qty = Number(window.prompt('Enter Quantity (Units):', '500') || 500);
+                      const rate = Number(window.prompt('Enter Unit Price in Rupees:', '32.00') || 32);
+                      
+                      try {
+                        const res = await ApiService.createInvoice({
+                          buyer_name: buyerName.trim(),
+                          buyer_address: buyerAddr.trim(),
+                          buyer_city: 'Pune',
+                          buyer_state_name: 'Maharashtra',
+                          buyer_state_code: '27',
+                          buyer_pincode: '411026',
+                          buyer_gstin: buyerGstin?.trim(),
+                          items: [
+                            {
+                              itemDescription: itemDesc,
+                              hsnCode: '4016',
+                              quantityMicrounits: qty * 1_000_000,
+                              unitPricePaise: Math.round(rate * 100),
+                              gstRateBps: 1800,
+                            }
+                          ]
+                        });
+                        if (res.success) {
+                          alert('Draft Invoice created! You can now review and issue it.');
+                          loadAllData();
+                        } else {
+                          alert(`Error: ${res.error}`);
+                        }
+                      } catch (err: any) {
+                        alert(`Failed: ${err.message}`);
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Draft Invoice</span>
+                  </button>
+                </div>
+
+                {invoices.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500 text-xs">
+                    No invoices generated yet. Create a Draft Invoice or convert an accepted quotation to begin.
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                        <tr>
+                          <th className="p-3">Invoice Number</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">Buyer Name</th>
+                          <th className="p-3">Buyer GSTIN</th>
+                          <th className="p-3 text-right">Taxable (₹)</th>
+                          <th className="p-3 text-right">Total (₹)</th>
+                          <th className="p-3 text-center">Status</th>
+                          <th className="p-3 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {invoices.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-slate-50/80">
+                            <td className="p-3 font-mono font-bold text-[#102F59]">
+                              {inv.invoice_number || 'DRAFT (Unissued)'}
+                            </td>
+                            <td className="p-3 text-slate-500">{inv.invoice_date || 'Pending Issuance'}</td>
+                            <td className="p-3">
+                              <div className="font-bold text-slate-900">{inv.buyer_name || 'N/A'}</div>
+                              <div className="text-[11px] text-slate-500">{inv.buyer_state_name} ({inv.buyer_state_code})</div>
+                            </td>
+                            <td className="p-3 font-mono text-slate-600">
+                              {inv.buyer_gstin || <span className="text-slate-400">URP (B2C)</span>}
+                            </td>
+                            <td className="p-3 text-right font-mono">₹{(inv.taxable_amount_paise / 100).toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-900">₹{(inv.total_invoice_amount_paise / 100).toFixed(2)}</td>
+                            <td className="p-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                inv.status === 'Issued' ? 'bg-blue-100 text-[#0755A5]' :
+                                inv.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                                'bg-amber-100 text-amber-800'
+                              }`}>
+                                {inv.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {inv.status === 'Draft' && (
+                                  <button
+                                    onClick={async () => {
+                                      if (window.confirm('Issue this invoice? This will allocate the next official sequential number (BE/26-27/XXXX) and permanently lock financial details.')) {
+                                        try {
+                                          const res = await ApiService.issueInvoice(inv.id);
+                                          if (res.success) {
+                                            alert(`Invoice issued successfully: ${res.invoice.invoice_number}`);
+                                            loadAllData();
+                                          } else {
+                                            alert(`Issuance Error: ${res.error}`);
+                                          }
+                                        } catch (err: any) {
+                                          alert(`Issuance failed: ${err.message}`);
+                                        }
+                                      }
+                                    }}
+                                    className="px-2.5 py-1 bg-[#102F59] hover:bg-[#0755A5] text-white text-[11px] font-semibold rounded transition-colors"
+                                  >
+                                    Issue Invoice
+                                  </button>
+                                )}
+
+                                {inv.status === 'Issued' && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        window.open(ApiService.getInvoiceHtmlUrl(inv.id), '_blank');
+                                      }}
+                                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
+                                      title="Print or Save PDF"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                      <span>Print</span>
+                                    </button>
+
+                                    <button
+                                      onClick={async () => {
+                                        const reason = window.prompt('Enter mandatory cancellation reason (min 5 characters):');
+                                        if (!reason || reason.trim().length < 5) {
+                                          alert('Cancellation cancelled: Reason must be at least 5 characters.');
+                                          return;
+                                        }
+                                        const res = await ApiService.cancelInvoice(inv.id, reason.trim());
+                                        if (res.success) {
+                                          alert('Invoice cancelled and permanently frozen in audit log.');
+                                          loadAllData();
+                                        } else {
+                                          alert(`Error: ${res.error}`);
+                                        }
+                                      }}
+                                      className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-semibold rounded transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                )}
+
+                                {inv.status === 'Cancelled' && (
+                                  <span className="text-[10px] text-red-600 font-medium italic">
+                                    Frozen Record
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { StorageService } from '../../services/storageService';
-import { UploadCloud, CheckCircle2, AlertCircle, FileText, X, ArrowRight, ShieldCheck } from 'lucide-react';
+import { ApiService, EnquirySubmissionResult } from '../../services/apiService';
+import { UploadCloud, CheckCircle2, AlertCircle, FileText, X, ArrowRight, ShieldCheck, AlertTriangle, PhoneCall } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface EnquirySectionProps {
@@ -25,7 +26,7 @@ export const EnquirySection: React.FC<EnquirySectionProps> = ({ prefilledCategor
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submissionSuccess, setSubmissionSuccess] = useState<string | null>(null);
+  const [submissionResult, setSubmissionResult] = useState<EnquirySubmissionResult | null>(null);
 
   const { language, t } = useLanguage();
 
@@ -125,7 +126,7 @@ export const EnquirySection: React.FC<EnquirySectionProps> = ({ prefilledCategor
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (honeypot) return;
@@ -133,42 +134,40 @@ export const EnquirySection: React.FC<EnquirySectionProps> = ({ prefilledCategor
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      try {
-        const newEnquiry = StorageService.createEnquiry({
-          companyName: companyName.trim(),
-          contactPerson: contactPerson.trim(),
-          email: email.trim(),
-          mobile: mobile.trim(),
-          productCategory,
-          quantityRequired: quantityRequired.trim(),
-          technicalRequirements: technicalRequirements.trim(),
-          message: message.trim(),
-          drawingFileName: fileName || undefined,
-          drawingFileData: fileData,
-        });
+    try {
+      const fileToUpload = fileInputRef.current?.files?.[0];
+      const result = await ApiService.submitEnquiry({
+        companyName: companyName.trim(),
+        contactPerson: contactPerson.trim(),
+        email: email.trim(),
+        mobile: mobile.trim(),
+        productCategory,
+        quantityRequired: quantityRequired.trim(),
+        technicalRequirements: technicalRequirements.trim(),
+        message: message.trim(),
+        drawingFile: fileToUpload,
+      });
 
-        setSubmissionSuccess(newEnquiry.referenceNumber);
-        setCompanyName('');
-        setContactPerson('');
-        setEmail('');
-        setMobile('');
-        setQuantityRequired('');
-        setTechnicalRequirements('');
-        setMessage('');
-        removeFile();
-        setErrors({});
-      } catch {
-        setErrors({
-          general:
-            language === 'mr'
-              ? 'चौकशी नोंदवण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा ९०२८२६००११ वर कॉल करा.'
-              : 'Failed to record enquiry. Please try again or call 9028260011.',
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    }, 600);
+      setSubmissionResult(result);
+      setCompanyName('');
+      setContactPerson('');
+      setEmail('');
+      setMobile('');
+      setQuantityRequired('');
+      setTechnicalRequirements('');
+      setMessage('');
+      removeFile();
+      setErrors({});
+    } catch {
+      setErrors({
+        general:
+          language === 'mr'
+            ? 'चौकशी नोंदवण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा ९०२८२६००११ वर कॉल करा.'
+            : 'Failed to record enquiry. Please try again or call 9028260011.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -235,38 +234,81 @@ export const EnquirySection: React.FC<EnquirySectionProps> = ({ prefilledCategor
           {/* Right Column Form */}
           <div className="lg:col-span-7">
             <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-              {submissionSuccess ? (
-                <div className="py-12 px-4 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center border border-emerald-200">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-
-                  <h3 className="font-heading text-2xl font-bold text-slate-900">
-                    {t.enquiry.successTitle}
-                  </h3>
-
-                  <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-                    {t.enquiry.successDesc}
-                  </p>
-
-                  <div className="inline-block p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-1">
-                    <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">
-                      {t.enquiry.refNotice}
+              {submissionResult ? (
+                submissionResult.isOffline ? (
+                  /* OFFLINE PENDING STATE - NEVER CLAIMS SERVER SYNC SUCCESS */
+                  <div className="py-8 px-4 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+                      <AlertTriangle className="w-8 h-8" />
                     </div>
-                    <div className="font-mono text-lg font-bold text-[#102F59]">
-                      {submissionSuccess}
+
+                    <h3 className="font-heading text-2xl font-bold text-slate-900">
+                      {language === 'mr' ? 'चौकशी स्थानिकरित्या जतन केली (सर्व्हर सिंक प्रलंबित)' : 'Enquiry Saved Locally (Server Sync Pending)'}
+                    </h3>
+
+                    <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                      {submissionResult.message}
+                    </p>
+
+                    <div className="inline-block p-4 rounded-xl bg-amber-50/70 border border-amber-200 text-left space-y-1">
+                      <div className="text-xs text-amber-800 uppercase tracking-wider font-semibold">
+                        {language === 'mr' ? 'स्थानिक संदर्भ क्रमांक' : 'Local Offline Tracking Reference'}
+                      </div>
+                      <div className="font-mono text-lg font-bold text-amber-900">
+                        {submissionResult.referenceNumber}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
+                      <a
+                        href="tel:9028260011"
+                        className="w-full sm:w-auto px-5 py-2.5 text-xs font-semibold text-white bg-[#102F59] hover:bg-[#0755A5] rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <PhoneCall className="w-4 h-4" />
+                        <span>Call +91 9028260011</span>
+                      </a>
+                      <button
+                        onClick={() => setSubmissionResult(null)}
+                        className="w-full sm:w-auto px-5 py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        {t.enquiry.submitAnother}
+                      </button>
                     </div>
                   </div>
+                ) : (
+                  /* SERVER SYNCHRONIZED STATE */
+                  <div className="py-12 px-4 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center border border-emerald-200">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
 
-                  <div className="pt-4">
-                    <button
-                      onClick={() => setSubmissionSuccess(null)}
-                      className="px-6 py-2.5 text-xs font-semibold text-white bg-[#0755A5] hover:bg-[#102F59] rounded-lg transition-colors cursor-pointer"
-                    >
-                      {t.enquiry.submitAnother}
-                    </button>
+                    <h3 className="font-heading text-2xl font-bold text-slate-900">
+                      {t.enquiry.successTitle}
+                    </h3>
+
+                    <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                      {submissionResult.message}
+                    </p>
+
+                    <div className="inline-block p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-1">
+                      <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">
+                        {t.enquiry.refNotice}
+                      </div>
+                      <div className="font-mono text-lg font-bold text-[#102F59]">
+                        {submissionResult.referenceNumber}
+                      </div>
+                    </div>
+
+                    <div className="pt-4">
+                      <button
+                        onClick={() => setSubmissionResult(null)}
+                        className="px-6 py-2.5 text-xs font-semibold text-white bg-[#0755A5] hover:bg-[#102F59] rounded-lg transition-colors cursor-pointer"
+                      >
+                        {t.enquiry.submitAnother}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <input

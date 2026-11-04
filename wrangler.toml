@@ -1,0 +1,77 @@
+# ==============================================================================
+# BABA ENTERPRISES — CLOUDFLARE WORKERS ARCHITECTURE CONFIGURATION
+# STAGING & PRODUCTION HARD ISOLATION
+# ==============================================================================
+
+name = "babaenterprises"
+main = "worker/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets serving for frontend SPA
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# ------------------------------------------------------------------------------
+# DEFAULT (LOCAL DEV) ENVIRONMENT
+# ------------------------------------------------------------------------------
+[vars]
+ENVIRONMENT = "local"
+GST_INVOICE_PREFIX = "BE/26-27/"
+SELLER_GSTIN = "27AGCPB8322L1ZG"
+SELLER_STATE_CODE = "27"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "babaenterprises-db-local"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[r2_buckets]]
+binding = "DOCUMENTS_BUCKET"
+bucket_name = "babaenterprises-drawings-local"
+
+# ------------------------------------------------------------------------------
+# STAGING ENVIRONMENT (Authorized Target)
+# Target Worker: babaenterprises-staging
+# Target D1: babaenterprises-db-staging
+# Target R2: babaenterprises-drawings-staging
+# ------------------------------------------------------------------------------
+[env.staging]
+name = "babaenterprises-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+GST_INVOICE_PREFIX = "BE/26-27/"
+SELLER_GSTIN = "27AGCPB8322L1ZG"
+SELLER_STATE_CODE = "27"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "babaenterprises-db-staging"
+database_id = "bc88dcf9-ba27-40f2-83ef-556428651301"
+
+[[env.staging.r2_buckets]]
+binding = "DOCUMENTS_BUCKET"
+bucket_name = "babaenterprises-drawings-staging"
+
+# ------------------------------------------------------------------------------
+# PRODUCTION ENVIRONMENT (STRICTLY ISOLATED — UNTOUCHED)
+# ------------------------------------------------------------------------------
+[env.production]
+name = "babaenterprises"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+GST_INVOICE_PREFIX = "BE/26-27/"
+SELLER_GSTIN = "27AGCPB8322L1ZG"
+SELLER_STATE_CODE = "27"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "babaenterprises-db"
+database_id = "<PRODUCTION_D1_DATABASE_ID_PLACEHOLDER>"
+
+[[env.production.r2_buckets]]
+binding = "DOCUMENTS_BUCKET"
+bucket_name = "babaenterprises-drawings"
