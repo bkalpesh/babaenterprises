@@ -1,6 +1,6 @@
 # BABA ENTERPRISES — Industrial Rubber & Plastic Components
 
-A full-stack, production-grade web application and enterprise portal for **BABA ENTERPRISES**, an industrial rubber and plastic components supplier based in Bhosari, Pune, Maharashtra, India.
+A full-stack, production-grade web application and enterprise portal for **BABA ENTERPRISES**, an industrial rubber and plastic components supplier based in Pune, Maharashtra, India.
 
 ---
 
