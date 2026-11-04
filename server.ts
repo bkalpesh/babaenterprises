@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -11,7 +12,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+
+// Determine server port:
+// 1. Explicit CLI flag: --port <num> (highest priority, used by AI Studio dev runner)
+// 2. Development mode default: 3000 (AI Studio proxy requires port 3000)
+// 3. Production environment: PORT env var (Cloud Run / deployment ingress) or 3000
+function resolvePort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const val = Number(process.argv[portArgIndex + 1]);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return 3000;
+  }
+  if (process.env.PORT) {
+    const val = Number(process.env.PORT);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return 3000;
+}
+
+const PORT = resolvePort();
 
 // Administrative passcode configured via server environment variable (never exposed to client)
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'BabaAdmin#2026!Secure';
@@ -27,7 +49,7 @@ const MAX_ATTEMPTS = 5;
 const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes lockout
 
 // Clean up stale rate limit entries every 30 minutes
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of loginAttempts.entries()) {
     if (entry.lockUntil < now && entry.count === 0) {
@@ -35,6 +57,7 @@ setInterval(() => {
     }
   }
 }, 30 * 60 * 1000);
+cleanupTimer.unref();
 
 app.use(express.json());
 
@@ -114,21 +137,56 @@ app.post('/api/admin/login', (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false // Prevent separate WebSocket port collisions in containerized environments
+      },
       appType: 'spa'
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
+    const indexPath = path.resolve(distPath, 'index.html');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(503).send('Application is building. Please refresh in a few moments.');
+      }
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on port ${PORT}`);
   });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use.`);
+      process.exit(1);
+    } else {
+      console.error('Server listen error:', err);
+    }
+  });
+
+  const gracefulShutdown = (signal: string) => {
+    console.log(`Received ${signal}. Shutting down server gracefully...`);
+    server.close(() => {
+      console.log('Server stopped cleanly.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.warn('Forcing process exit after timeout.');
+      process.exit(0);
+    }, 2000).unref();
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Fatal error starting server:', err);
+  process.exit(1);
+});
