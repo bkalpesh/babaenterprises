@@ -30,8 +30,8 @@ CREATE TABLE business_settings (
   bank_branch TEXT DEFAULT NULL,
   bank_account_no TEXT DEFAULT NULL,
   bank_ifsc TEXT DEFAULT NULL,
-  invoice_prefix TEXT NOT NULL DEFAULT 'BE/26-27/',
-  quotation_prefix TEXT NOT NULL DEFAULT 'BE/QT/26-27/',
+  invoice_prefix TEXT NOT NULL,
+  quotation_prefix TEXT NOT NULL,
   default_payment_terms TEXT DEFAULT NULL,
   default_invoice_notes TEXT DEFAULT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

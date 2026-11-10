@@ -4,13 +4,13 @@
 // Guarantees: Local fallback NEVER claims server synchronization success
 // ==============================================================================
 
-import { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../types';
-import { StorageService } from './storageService';
+import type { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../types/index.ts';
+import { StorageService } from './storageService.ts';
 
 const API_BASE = '/api';
 
 function getAuthHeader(): Record<string, string> {
-  const token = sessionStorage.getItem('baba_admin_token');
+  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('baba_admin_token') : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -313,5 +313,59 @@ export const ApiService = {
 
   getInvoiceHtmlUrl(invoiceId: string): string {
     return `${API_BASE}/invoices/${invoiceId}/html`;
+  },
+
+  async getInvoiceHtml(invoiceId: string): Promise<string> {
+    const res = await fetch(this.getInvoiceHtmlUrl(invoiceId), {
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) {
+      let errMsg = `Failed to fetch invoice HTML (${res.status})`;
+      try {
+        const data = (await res.json()) as any;
+        if (data && data.error) errMsg = data.error;
+      } catch {
+        // Fallback to text
+      }
+      throw new Error(errMsg);
+    }
+    return await res.text();
+  },
+
+  async printInvoice(invoiceId: string): Promise<void> {
+    const html = await this.getInvoiceHtml(invoiceId);
+    if (typeof window === 'undefined') return;
+
+    // Secure browser print flow: create Blob URL containing the authorized HTML
+    // No JWT or token is ever exposed in the URL.
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    const printWindow = window.open(blobUrl, '_blank');
+    if (!printWindow) {
+      // Fallback: render in hidden iframe for direct printing
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+      iframe.src = blobUrl;
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(blobUrl);
+        }, 2000);
+      };
+      return;
+    }
+
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 60000);
   },
 };

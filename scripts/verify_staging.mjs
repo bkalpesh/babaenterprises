@@ -27,6 +27,7 @@ import {
   createSignedToken,
   verifySignedToken,
 } from '../worker/index.ts';
+import { ApiService } from '../src/services/apiService.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -2605,6 +2606,248 @@ assertTest('TC-81', 'Financial Integrity', 'POSITIVE', 'Comprehensive verificati
   const totalTax = cgst + sgst; // 8550 paise
   const totalAmount = expectedTaxable + totalTax; // 56048 paise
   if (totalAmount !== 56048) throw new Error(`Expected total 56048, got ${totalAmount}`);
+});
+
+await assertTest('TC-82', 'Invoice HTML Auth', 'NEGATIVE', 'GET /api/invoices/:id/html rejects unauthenticated request without token with HTTP 401', async () => {
+  const d1 = createD1Adapter(db);
+  const quote = db.prepare("SELECT converted_invoice_id FROM quotations WHERE id = 'qt-match-test'").get();
+  const targetInvoiceId = quote.converted_invoice_id;
+
+  const reqNoAuth = new Request(`https://staging.babaenterprises.internal/api/invoices/${targetInvoiceId}/html`, {
+    method: 'GET'
+  });
+
+  const res = await worker.fetch(reqNoAuth, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 401) {
+    throw new Error(`Expected HTTP 401 for unauthenticated invoice HTML request, got ${res.status}`);
+  }
+  const body = await res.json();
+  if (!body.error?.includes('Unauthorized')) {
+    throw new Error(`Expected Unauthorized error message, got: ${body.error}`);
+  }
+});
+
+await assertTest('TC-83', 'Invoice HTML Auth', 'NEGATIVE', 'GET /api/invoices/:id/html rejects request with invalid or forged token with HTTP 401', async () => {
+  const d1 = createD1Adapter(db);
+  const quote = db.prepare("SELECT converted_invoice_id FROM quotations WHERE id = 'qt-match-test'").get();
+  const targetInvoiceId = quote.converted_invoice_id;
+
+  const reqBadToken = new Request(`https://staging.babaenterprises.internal/api/invoices/${targetInvoiceId}/html`, {
+    method: 'GET',
+    headers: { Authorization: 'Bearer forged.token.signature' }
+  });
+
+  const res = await worker.fetch(reqBadToken, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 401) {
+    throw new Error(`Expected HTTP 401 for invalid token on invoice HTML, got ${res.status}`);
+  }
+  const body = await res.json();
+  if (!body.error?.includes('Unauthorized')) {
+    throw new Error(`Expected Unauthorized error message, got: ${body.error}`);
+  }
+});
+
+await assertTest('TC-84', 'Invoice HTML Auth', 'POSITIVE', 'GET /api/invoices/:id/html succeeds with valid Authorization: Bearer token returning print-ready HTML', async () => {
+  const d1 = createD1Adapter(db);
+  const quote = db.prepare("SELECT converted_invoice_id FROM quotations WHERE id = 'qt-match-test'").get();
+  const targetInvoiceId = quote.converted_invoice_id;
+  const validToken = await createSignedToken('TestSecret');
+
+  // Case: Authorization: Bearer <token> header strictly required
+  const reqAuthHeader = new Request(`https://staging.babaenterprises.internal/api/invoices/${targetInvoiceId}/html`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${validToken}` }
+  });
+
+  const resHeader = await worker.fetch(reqAuthHeader, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (resHeader.status !== 200) {
+    throw new Error(`Expected HTTP 200 for authenticated invoice HTML, got ${resHeader.status}`);
+  }
+  const contentTypeHeader = resHeader.headers.get('Content-Type');
+  if (!contentTypeHeader?.includes('text/html')) {
+    throw new Error(`Expected Content-Type text/html, got ${contentTypeHeader}`);
+  }
+  const htmlBodyHeader = await resHeader.text();
+  if (!htmlBodyHeader.includes('<!DOCTYPE html>') || !htmlBodyHeader.includes('BABA ENTERPRISES')) {
+    throw new Error('Invoice HTML response missing expected HTML doctype or business name');
+  }
+  if (!htmlBodyHeader.includes('BE/28-29/0001')) {
+    throw new Error('Invoice HTML response missing expected invoice number BE/28-29/0001');
+  }
+});
+
+await assertTest('TC-84B', 'Invoice HTML Auth', 'NEGATIVE', 'GET /api/invoices/:id/html rejects request with valid JWT supplied only through ?token= query parameter with HTTP 401', async () => {
+  const d1 = createD1Adapter(db);
+  const quote = db.prepare("SELECT converted_invoice_id FROM quotations WHERE id = 'qt-match-test'").get();
+  const targetInvoiceId = quote.converted_invoice_id;
+  const validToken = await createSignedToken('TestSecret');
+
+  // Query parameter token (?token=...) without Authorization header MUST return HTTP 401
+  const reqAuthQuery = new Request(`https://staging.babaenterprises.internal/api/invoices/${targetInvoiceId}/html?token=${encodeURIComponent(validToken)}`, {
+    method: 'GET'
+  });
+
+  const resQuery = await worker.fetch(reqAuthQuery, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (resQuery.status !== 401) {
+    throw new Error(`Expected HTTP 401 for query-parameter authentication attempt, got ${resQuery.status}`);
+  }
+  const body = await resQuery.json();
+  if (!body.error?.includes('Unauthorized')) {
+    throw new Error(`Expected Unauthorized error message for query-parameter token, got: ${body.error}`);
+  }
+});
+
+assertTest('TC-84C', 'Invoice URL Security', 'POSITIVE', 'ApiService.getInvoiceHtmlUrl() strictly returns clean endpoint path and never includes JWT or query parameter', () => {
+  const invId = 'inv-sec-test-01';
+
+  // 1. Baseline invocation check
+  const baselineUrl = ApiService.getInvoiceHtmlUrl(invId);
+  if (baselineUrl !== `/api/invoices/${invId}/html`) {
+    throw new Error(`Expected exact endpoint path '/api/invoices/${invId}/html', got: '${baselineUrl}'`);
+  }
+  if (baselineUrl.includes('?') || baselineUrl.includes('token') || baselineUrl.includes('Bearer')) {
+    throw new Error(`Baseline URL contains forbidden query params or credentials: '${baselineUrl}'`);
+  }
+
+  // 2. Browser storage simulation with active admin token in sessionStorage
+  const previousSessionStorage = globalThis.sessionStorage;
+  try {
+    globalThis.sessionStorage = {
+      getItem: (key) => (key === 'baba_admin_token' ? 'secret_admin_jwt_payload.signature_hash_xyz' : null),
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+      length: 1,
+      key: () => null,
+    };
+
+    const securedUrl = ApiService.getInvoiceHtmlUrl(invId);
+    if (securedUrl !== `/api/invoices/${invId}/html`) {
+      throw new Error(`Expected exact endpoint path '/api/invoices/${invId}/html', got: '${securedUrl}'`);
+    }
+    if (securedUrl.includes('?') || securedUrl.includes('token') || securedUrl.includes('secret_admin_jwt')) {
+      throw new Error(`Secured URL leaked session token into query string: '${securedUrl}'`);
+    }
+  } finally {
+    globalThis.sessionStorage = previousSessionStorage;
+  }
+});
+
+assertTest('TC-85', 'Schema Defaults', 'POSITIVE', 'business_settings schema confirms static 2026-27 prefix defaults are absent (dflt_value is null)', () => {
+  const tableInfo = db.prepare("PRAGMA table_info('business_settings')").all();
+
+  const invPrefixCol = tableInfo.find(c => c.name === 'invoice_prefix');
+  if (!invPrefixCol) throw new Error('Column invoice_prefix not found in business_settings');
+  if (invPrefixCol.notnull !== 1) throw new Error('Expected business_settings.invoice_prefix to be NOT NULL (notnull = 1)');
+  if (invPrefixCol.dflt_value !== null) {
+    throw new Error(`Expected business_settings.invoice_prefix dflt_value to be NULL, found: ${invPrefixCol.dflt_value}`);
+  }
+
+  const qtPrefixCol = tableInfo.find(c => c.name === 'quotation_prefix');
+  if (!qtPrefixCol) throw new Error('Column quotation_prefix not found in business_settings');
+  if (qtPrefixCol.notnull !== 1) throw new Error('Expected business_settings.quotation_prefix to be NOT NULL (notnull = 1)');
+  if (qtPrefixCol.dflt_value !== null) {
+    throw new Error(`Expected business_settings.quotation_prefix dflt_value to be NULL, found: ${qtPrefixCol.dflt_value}`);
+  }
+
+  // Check invoices and quotations tables as well
+  const invCols = db.prepare("PRAGMA table_info('invoices')").all();
+  const invPrefix = invCols.find(c => c.name === 'invoice_prefix');
+  const invFY = invCols.find(c => c.name === 'financial_year');
+  if (invPrefix?.dflt_value !== null) throw new Error(`Expected invoices.invoice_prefix dflt_value NULL, got ${invPrefix?.dflt_value}`);
+  if (invFY?.dflt_value !== null) throw new Error(`Expected invoices.financial_year dflt_value NULL, got ${invFY?.dflt_value}`);
+
+  const qtCols = db.prepare("PRAGMA table_info('quotations')").all();
+  const qtPrefix = qtCols.find(c => c.name === 'quotation_prefix');
+  const qtFY = qtCols.find(c => c.name === 'financial_year');
+  if (qtPrefix?.dflt_value !== null) throw new Error(`Expected quotations.quotation_prefix dflt_value NULL, got ${qtPrefix?.dflt_value}`);
+  if (qtFY?.dflt_value !== null) throw new Error(`Expected quotations.financial_year dflt_value NULL, got ${qtFY?.dflt_value}`);
+});
+
+assertTest('TC-86', 'Prefix Transitions', 'POSITIVE', 'Application explicitly supplies dynamically generated prefixes across multiple financial years', () => {
+  // Test dynamic prefix generation across multiple years
+  const years = [
+    { date: '2026-06-15', expectedFY: '2026-27', expectedInvPrefix: 'BE/26-27/', expectedQtPrefix: 'BE/QT/26-27/' },
+    { date: '2027-03-31', expectedFY: '2026-27', expectedInvPrefix: 'BE/26-27/', expectedQtPrefix: 'BE/QT/26-27/' },
+    { date: '2027-04-01', expectedFY: '2027-28', expectedInvPrefix: 'BE/27-28/', expectedQtPrefix: 'BE/QT/27-28/' },
+    { date: '2028-07-20', expectedFY: '2028-29', expectedInvPrefix: 'BE/28-29/', expectedQtPrefix: 'BE/QT/28-29/' },
+    { date: '2029-04-05', expectedFY: '2029-30', expectedInvPrefix: 'BE/29-30/', expectedQtPrefix: 'BE/QT/29-30/' },
+  ];
+
+  for (const yr of years) {
+    const derivedFY = getFinancialYear(yr.date);
+    if (derivedFY !== yr.expectedFY) {
+      throw new Error(`Date ${yr.date}: Expected FY ${yr.expectedFY}, got ${derivedFY}`);
+    }
+    const derivedInvPrefix = getInvoicePrefix(derivedFY);
+    if (derivedInvPrefix !== yr.expectedInvPrefix) {
+      throw new Error(`FY ${derivedFY}: Expected invoice prefix ${yr.expectedInvPrefix}, got ${derivedInvPrefix}`);
+    }
+    const derivedQtPrefix = getQuotationPrefix(derivedFY);
+    if (derivedQtPrefix !== yr.expectedQtPrefix) {
+      throw new Error(`FY ${derivedFY}: Expected quotation prefix ${yr.expectedQtPrefix}, got ${derivedQtPrefix}`);
+    }
+  }
+
+  // Verify business_settings in DB contains verified current prefix explicitly provided by seed data
+  const currentSettings = db.prepare('SELECT invoice_prefix, quotation_prefix FROM business_settings WHERE id = 1').get();
+  if (currentSettings.invoice_prefix !== 'BE/26-27/' || currentSettings.quotation_prefix !== 'BE/QT/26-27/') {
+    throw new Error('business_settings seed prefixes do not match expected initial configuration');
+  }
+
+  // Update business_settings explicitly with next FY prefix and verify persistence
+  const nextFY = getFinancialYear('2027-04-01');
+  const nextInvPrefix = getInvoicePrefix(nextFY);
+  const nextQtPrefix = getQuotationPrefix(nextFY);
+  db.exec(`
+    UPDATE business_settings
+    SET invoice_prefix = '${nextInvPrefix}',
+        quotation_prefix = '${nextQtPrefix}',
+        updated_at = datetime('now')
+    WHERE id = 1;
+  `);
+
+  const updatedSettings = db.prepare('SELECT invoice_prefix, quotation_prefix FROM business_settings WHERE id = 1').get();
+  if (updatedSettings.invoice_prefix !== 'BE/27-28/' || updatedSettings.quotation_prefix !== 'BE/QT/27-28/') {
+    throw new Error('Failed to update business_settings with FY 2027-28 prefixes');
+  }
+
+  // Reset back to initial 2026-27
+  db.exec(`
+    UPDATE business_settings
+    SET invoice_prefix = 'BE/26-27/',
+        quotation_prefix = 'BE/QT/26-27/',
+        updated_at = datetime('now')
+    WHERE id = 1;
+  `);
 });
 
 console.log('\n===============================================================================');

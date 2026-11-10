@@ -159,7 +159,9 @@ function errorResponse(message: string, status: number = 400): Response {
 async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader) return false;
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return false;
+  const token = match[1].trim();
   if (!token) return false;
   // Fail closed if required JWT_SECRET or ADMIN_PASSCODE is not configured
   if (!env.JWT_SECRET || !env.ADMIN_PASSCODE) return false;
@@ -1619,8 +1621,11 @@ export const worker = {
         return jsonResponse({ success: true, invoice: cancelled });
       }
 
-      // PRINT-READY HTML INVOICE
+      // PRINT-READY HTML INVOICE (Protected: Requires Admin Authorization)
       if (url.pathname.match(/^\/api\/invoices\/[^/]+\/html$/) && method === 'GET') {
+        if (!(await checkAdminAuth(request, env))) {
+          return errorResponse('Unauthorized: Administrative authorization required to view invoice HTML.', 401);
+        }
         const invId = url.pathname.split('/')[3];
         const invoice = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first<DBInvoice>();
         if (!invoice) return errorResponse('Invoice not found.', 404);

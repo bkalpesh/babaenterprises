@@ -954,8 +954,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {inv.status === 'Issued' && (
                                   <>
                                     <button
-                                      onClick={() => {
-                                        window.open(ApiService.getInvoiceHtmlUrl(inv.id), '_blank');
+                                      onClick={async () => {
+                                        try {
+                                          await ApiService.printInvoice(inv.id);
+                                        } catch (err: any) {
+                                          alert(`Failed to load invoice for printing: ${err.message}`);
+                                        }
                                       }}
                                       className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
                                       title="Print or Save PDF"

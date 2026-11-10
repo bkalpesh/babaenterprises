@@ -1,4 +1,4 @@
-import { BusinessContactInfo, CustomerReference, Industry, Product, BusinessEnquiry } from '../types';
+import type { BusinessContactInfo, CustomerReference, Industry, Product, BusinessEnquiry } from '../types/index.ts';
 
 export const OFFICIAL_BUSINESS_INFO: BusinessContactInfo = {
   companyName: 'BABA ENTERPRISES',
