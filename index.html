@@ -3,6 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        // Immediate early global error interceptor
+        function isExtensionError(msg, src, stack) {
+          var str = ((msg || '') + ' ' + (src || '') + ' ' + (stack || '')).toLowerCase();
+          return str.includes('metamask') ||
+                 str.includes('ethereum') ||
+                 str.includes('chrome-extension://') ||
+                 str.includes('moz-extension://') ||
+                 str.includes('inpage.js');
+        }
+
+        window.addEventListener('error', function(e) {
+          if (isExtensionError(e.message, e.filename, e.error && e.error.stack)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason;
+          var msg = (reason && (reason.message || (typeof reason === 'string' ? reason : ''))) || '';
+          var stack = (reason && reason.stack) || '';
+          if (isExtensionError(msg, '', stack)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+
+        // Define a non-intrusive dummy ethereum provider if none exists or if an extension attempts auto-connect
+        try {
+          if (!window.ethereum) {
+            var noopPromise = function() { return new Promise(function() {}); };
+            window.ethereum = {
+              isMetaMask: false,
+              request: noopPromise,
+              send: noopPromise,
+              sendAsync: noopPromise,
+              enable: noopPromise,
+              on: function() {},
+              removeListener: function() {},
+              autoRefreshOnNetworkChange: false
+            };
+          }
+        } catch (_) {}
+      })();
+    </script>
     <title>BABA ENTERPRISES | Industrial Rubber & Plastic Components | Bhosari, Pune</title>
     <meta name="description" content="BABA ENTERPRISES is an industrial rubber and plastic components supplier based in Bhosari, Pune, Maharashtra. Precision rubber moulded products, sealing solutions, and engineering supplies." />
     <meta name="keywords" content="BABA ENTERPRISES Pune, Industrial Rubber Components Pune, Industrial Rubber Products Bhosari, Rubber Washers Supplier Pune, Rubber Bushes Supplier Pune, Industrial Plastic Components, Rubber and Plastic Components Supplier India" />
@@ -63,6 +113,47 @@
   </head>
   <body class="bg-[#F8FAFC] text-[#252B33] font-['Inter',sans-serif] antialiased selection:bg-[#0755A5] selection:text-white">
     <div id="root"></div>
+    <script>
+      // Defensive window error handler to prevent injected browser extensions (e.g. MetaMask, wallet extensions)
+      // from surfacing false-positive errors to the application error overlay.
+      window.addEventListener('error', function(event) {
+        if (
+          event.filename && (
+            event.filename.includes('chrome-extension://') ||
+            event.filename.includes('moz-extension://') ||
+            event.filename.includes('inpage.js')
+          )
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return true;
+        }
+        if (event.message && (
+          event.message.includes('MetaMask') ||
+          event.message.includes('ethereum')
+        )) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return true;
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var msg = (reason && (reason.message || (typeof reason === 'string' ? reason : ''))) || '';
+        var stack = (reason && reason.stack) || '';
+        if (
+          msg.includes('MetaMask') ||
+          msg.includes('Failed to connect to MetaMask') ||
+          stack.includes('chrome-extension://') ||
+          stack.includes('moz-extension://') ||
+          stack.includes('inpage.js')
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,15 +1,18 @@
 -- ==============================================================================
 -- BABA ENTERPRISES — SEED DATA FOR STAGING ENVIRONMENT
 -- Target database: babaenterprises-db-staging
--- Preserves: 12 products, 5 reference profiles, unverified GST rates as NULL
+-- Environment: STAGING ONLY (Local SQLite & Cloudflare D1 Staging)
 -- ==============================================================================
 
--- 1. Business Settings
+-- ------------------------------------------------------------------------------
+-- 1. BUSINESS PROFILE & GSTIN SETTINGS (Singleton id = 1)
+-- ------------------------------------------------------------------------------
 INSERT INTO business_settings (
   id, legal_name, trade_name, gstin, pan, state_name, state_code,
   address_line1, address_line2, city, pincode,
   phone_primary, phone_secondary, email,
   bank_name, bank_branch, bank_account_no, bank_ifsc,
+  invoice_prefix, quotation_prefix,
   default_payment_terms, default_invoice_notes
 ) VALUES (
   1,
@@ -27,22 +30,39 @@ INSERT INTO business_settings (
   '8788266934',
   'babaenterprises09@gmail.com',
   NULL, NULL, NULL, NULL,
-  'Payment within 30 days from invoice date',
-  'Subject to Pune Jurisdiction. Goods once sold will not be taken back.'
+  'BE/26-27/',
+  'BE/QT/26-27/',
+  NULL,
+  NULL
 ) ON CONFLICT(id) DO UPDATE SET
   legal_name = excluded.legal_name,
   trade_name = excluded.trade_name,
   gstin = excluded.gstin,
   pan = excluded.pan,
+  state_name = excluded.state_name,
+  state_code = excluded.state_code,
   address_line1 = excluded.address_line1,
   address_line2 = excluded.address_line2,
   city = excluded.city,
   pincode = excluded.pincode,
   phone_primary = excluded.phone_primary,
   phone_secondary = excluded.phone_secondary,
-  email = excluded.email;
+  email = excluded.email,
+  bank_name = excluded.bank_name,
+  bank_branch = excluded.bank_branch,
+  bank_account_no = excluded.bank_account_no,
+  bank_ifsc = excluded.bank_ifsc,
+  invoice_prefix = excluded.invoice_prefix,
+  quotation_prefix = excluded.quotation_prefix,
+  default_payment_terms = excluded.default_payment_terms,
+  default_invoice_notes = excluded.default_invoice_notes,
+  updated_at = datetime('now');
 
--- 2. Products (12 Catalogue Items with unit_price_paise = 0 and gst_rate_bps = NULL)
+-- ------------------------------------------------------------------------------
+-- 2. INDUSTRIAL PRODUCT CATALOGUE (12 Products)
+-- For every product: unit_price_paise = 0, gst_rate_bps = NULL, hsn_code = NULL
+-- (Strictly unverified/unapproved HSN and GST classifications are NOT invented)
+-- ------------------------------------------------------------------------------
 INSERT INTO products (
   id, name, slug, category, category_label, image_url,
   short_description, full_description, hsn_code, unit_price_paise, gst_rate_bps,
@@ -57,7 +77,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_washers.jpg',
   'Precision industrial rubber washers designed for sealing, vibration isolation, and fluid containment in mechanical assemblies.',
   'BABA ENTERPRISES supplies high-performance rubber washers tailored for critical mechanical fastening, pipe flanges, and electrical panels. Manufactured from selected rubber compounds to resist compression set, fluid leakage, and atmospheric degradation.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Pipe flange connections","Electrical panel enclosures","Vibration dampening fasteners","Automotive fluid fittings","Heavy machinery mounting"]',
@@ -75,7 +95,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_bushes_d4fb5aab.jpg',
   'Cylindrical vibration-damping rubber bushes and sleeves for suspension, pivot joints, and rotational machinery.',
   'Engineered for shock absorption and silent mechanical operation, these industrial bushes provide flexible coupling between mating metallic shafts and housings, reducing structural fatigue.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Suspension link pivots","Industrial motor mounts","Conveyor rollers","Pneumatic cylinder cushions","Machine frame isolators"]',
@@ -93,7 +113,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_grommets_12a01e59.jpg',
   'Industrial protective grommets for cable pass-through, panel holes, and hydraulic wire harness shielding.',
   'Moulded rubber grommets designed to line punched or drilled sheet metal holes, preventing abrasion damage to electrical cabling, tubing, and hydraulic hoses while offering dust and splash protection.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Control panels and switchgears","Automotive wire harness passages","Defence electronic enclosures","HVAC ducts and equipment casings"]',
@@ -111,7 +131,7 @@ INSERT INTO products (
   '/assets/aistudio/o_rings_4afab30b.jpg',
   'Precision elastomeric O-rings and backup rings for static and dynamic fluid sealing under diverse pressure environments.',
   'Comprehensive range of standard and custom cross-section O-rings engineered to prevent fluid and gas leakage across pneumatic systems, hydraulic cylinders, and chemical conduit joints.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Hydraulic valve blocks","Pneumatic actuators","Flanged pipe couplings","Compressor cylinder heads","Fuel and lubricant lines"]',
@@ -129,7 +149,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_bellows_936d983a.jpg',
   'Flexible convoluted rubber bellows and dust boots for protecting reciprocating shafts, ball screws, and guide ways.',
   'Designed to expand and contract dynamically without cracking, these rubber bellows shield precision mechanical assemblies, steering joints, and hydraulic pistons from abrasive dust, chips, and moisture.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["CNC ball screws and guide shafts","Hydraulic ram rod protectors","Automotive steering rack boots","Pneumatic expansion joints","Industrial robotic arms"]',
@@ -147,7 +167,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_bumpers_d296620e.jpg',
   'Heavy-duty impact absorption bumpers, conical stops, and buffer pads for industrial machinery and docking stops.',
   'Engineered buffer stops engineered to absorb shock energy at stroke limits of moving machinery, automated gates, crane gantries, and industrial equipment doors.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["End-of-travel stops for machine slides","Overhead crane buffer stops","Heavy transport vehicle doors","Press machine cushions","Material handling conveyor bumpers"]',
@@ -165,7 +185,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_t_nuts_146cf192.jpg',
   'Composite rubber-to-metal bonded T-nuts and blind well nuts for blind hole fastening and acoustic decoupling.',
   'Specialised fasteners combining a moulded rubber sleeve with an internal brass or steel threaded insert. When tightened, the rubber expands outward to lock into blind assemblies while isolating vibration.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Enclosure panel assemblies","Generator acoustic canopies","Railway and transit interior fittings","Vibratory screen mounts"]',
@@ -183,7 +203,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_profiles_09b545eb.jpg',
   'Extruded solid and sponge rubber profiles, P-profiles, D-seals, and channels for cabinet and equipment enclosure sealing.',
   'Continuous length extruded rubber profiles engineered for door weatherstripping, acoustic perimeter sealing, and channel clamping across electrical switchboards, industrial containers, and vehicle cabs.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Electrical panel door gaskets","Industrial oven and autoclave seals","Container hatch seals","Glass glazing channels","Cleanroom perimeter barriers"]',
@@ -201,7 +221,7 @@ INSERT INTO products (
   '/assets/aistudio/plastic_components_8af871df.jpg',
   'Engineered polymer components including spacers, guide blocks, wear pads, and structural insulators.',
   'High-strength engineering thermoplastics machined and moulded for applications demanding low weight, self-lubricating properties, chemical inertness, and high dielectric strength.',
-  '3926',
+  NULL,
   0,
   NULL,
   '["Electrical switchgear insulators","Material handling chain wear guides","Food and pharma contact blocks","Chemical pump components","Instrumentation housings"]',
@@ -219,7 +239,7 @@ INSERT INTO products (
   '/assets/aistudio/customised_components_5a5026d5.jpg',
   'Tailored rubber moulded and plastic components manufactured to specific customer drawings and engineering parameters.',
   'Dedicated supply capability for non-standard geometric components, composite rubber-to-metal bonding, and application-specific polymer formulations based on industrial buyer technical drawings.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Strategic defence sub-assemblies","Heavy transformer internal seals","Custom machine prototypes","Specialised industrial valves","Heritage equipment refurbishment"]',
@@ -237,7 +257,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_mountings_b27eb86e.jpg',
   'Heavy-duty cylindrical and sandwich mountings for isolating dynamic vibration from motors, fans, and compressors.',
   'Anti-vibration mountings with bonded male or female steel threaded studs, protecting delicate instruments and reducing transmission of mechanical vibration to plant floors.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Diesel generator sets","Centrifugal pump bases","Air handling units and HVAC chillers","Industrial vibrating conveyors"]',
@@ -255,7 +275,7 @@ INSERT INTO products (
   '/assets/aistudio/rubber_couplings_0ffa30d0.jpg',
   'Elastomeric jaw coupling spiders and star inserts for transmission torque dampening between motors and drives.',
   'Flexible coupling inserts that absorb peak starting shock loads and correct for minor angular, parallel, and axial shaft misalignments in rotating equipment.',
-  '4016',
+  NULL,
   0,
   NULL,
   '["Electric motor to pump couplings","Gearbox output shafts","Compressor drives","Blower fans"]',
@@ -272,14 +292,25 @@ ON CONFLICT(id) DO UPDATE SET
   image_url = excluded.image_url,
   short_description = excluded.short_description,
   full_description = excluded.full_description,
+  hsn_code = excluded.hsn_code,
+  unit_price_paise = excluded.unit_price_paise,
+  gst_rate_bps = excluded.gst_rate_bps,
   applications_json = excluded.applications_json,
   materials_json = excluded.materials_json,
   features_json = excluded.features_json,
-  sort_order = excluded.sort_order;
+  is_active = excluded.is_active,
+  sort_order = excluded.sort_order,
+  updated_at = datetime('now');
 
--- 3. Customer References (5 Authorized Engineering Profiles)
+-- ------------------------------------------------------------------------------
+-- 3. CUSTOMER REFERENCES (5 Strategic Engineering Organizations)
+-- Unverified contact details set to NULL; is_verified set to 0; is_active set to 0.
+-- Prevent unverified references from being presented publicly as confirmed customers.
+-- ------------------------------------------------------------------------------
 INSERT INTO customer_references (
-  id, name, short_name, category, sector, logo_url, logo_alt, is_active, sort_order
+  id, name, short_name, category, sector, logo_url, logo_alt,
+  contact_person, designation, email, phone, buyer_gstin,
+  is_verified, is_active, sort_order
 ) VALUES
 (
   'ref-01',
@@ -289,7 +320,9 @@ INSERT INTO customer_references (
   'Heavy Electrical & Power Equipment',
   '/assets/customers/bhel_logo.svg',
   'Bharat Heavy Electricals Limited (BHEL) Logo',
-  1,
+  NULL, NULL, NULL, NULL, NULL,
+  0,
+  0,
   1
 ),
 (
@@ -300,7 +333,9 @@ INSERT INTO customer_references (
   'Strategic Aerospace & Defence Electronics',
   '/assets/customers/bel_logo.png',
   'Bharat Electronics Limited (BEL) Logo',
-  1,
+  NULL, NULL, NULL, NULL, NULL,
+  0,
+  0,
   2
 ),
 (
@@ -311,7 +346,9 @@ INSERT INTO customer_references (
   'Armaments & Strategic Engineering',
   '/assets/customers/drdo_logo.png',
   'Armament Research and Development Establishment (ARDE / DRDO) Emblem',
-  1,
+  NULL, NULL, NULL, NULL, NULL,
+  0,
+  0,
   3
 ),
 (
@@ -322,7 +359,9 @@ INSERT INTO customer_references (
   'Strategic Defence Technologies',
   '/assets/customers/drdo_logo.png',
   'Defence Research and Development Organisation (DRDO) Emblem',
-  1,
+  NULL, NULL, NULL, NULL, NULL,
+  0,
+  0,
   4
 ),
 (
@@ -333,7 +372,9 @@ INSERT INTO customer_references (
   'Strategic & Industrial Engineering Supply',
   '/assets/customers/afk_mil_logo.png',
   'Ammunition Factory Khadki (Munitions India Limited) Logo',
-  1,
+  NULL, NULL, NULL, NULL, NULL,
+  0,
+  0,
   5
 )
 ON CONFLICT(id) DO UPDATE SET
@@ -343,4 +384,11 @@ ON CONFLICT(id) DO UPDATE SET
   sector = excluded.sector,
   logo_url = excluded.logo_url,
   logo_alt = excluded.logo_alt,
+  contact_person = excluded.contact_person,
+  designation = excluded.designation,
+  email = excluded.email,
+  phone = excluded.phone,
+  buyer_gstin = excluded.buyer_gstin,
+  is_verified = excluded.is_verified,
+  is_active = excluded.is_active,
   sort_order = excluded.sort_order;

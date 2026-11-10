@@ -66,6 +66,7 @@ export interface Env {
   SELLER_STATE_CODE: string;
   ADMIN_PASSCODE?: string;
   JWT_SECRET?: string;
+  STAGING_EMAIL_API_KEY?: string;
 }
 
 export interface BusinessSettings {
@@ -87,8 +88,8 @@ export interface BusinessSettings {
   bank_branch: string | null;
   bank_account_no: string | null;
   bank_ifsc: string | null;
-  default_payment_terms: string;
-  default_invoice_notes: string;
+  default_payment_terms: string | null;
+  default_invoice_notes: string | null;
   updated_at: string;
 }
 
@@ -187,7 +188,7 @@ export interface DBInvoiceItem {
   line_number: number;
   product_id: string | null;
   item_description: string;
-  hsn_code: string;
+  hsn_code: string | null;
   quantity_microunits: number; // e.g. 10 units = 10,000,000 microunits (6 decimals)
   unit_of_measure: string;
   unit_price_paise: number;
@@ -195,7 +196,7 @@ export interface DBInvoiceItem {
   discount_bps: number; // e.g. 500 = 5.00%
   discount_amount_paise: number;
   taxable_amount_paise: number;
-  gst_rate_bps: number; // 0, 500, 1200, 1800, 2800
+  gst_rate_bps: number | null; // 0, 500, 1200, 1800, 2800 or null if unconfirmed
   cgst_rate_bps: number;
   sgst_rate_bps: number;
   igst_rate_bps: number;
@@ -207,7 +208,10 @@ export interface DBInvoiceItem {
 
 export interface DBQuotation {
   id: string;
-  quotation_number: string;
+  quotation_number: string | null;
+  quotation_prefix?: string;
+  sequence_number?: number | null;
+  financial_year?: string;
   quotation_date: string;
   valid_until: string;
   buyer_name: string;
@@ -216,25 +220,74 @@ export interface DBQuotation {
   buyer_state_code: string;
   buyer_state_name: string;
   buyer_address: string | null;
+  buyer_pincode?: string | null;
   buyer_phone: string | null;
   buyer_email: string | null;
+  place_of_supply: string | null;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   converted_invoice_id: string | null;
+  client_approval_evidence: string | null;
+  accepted_at: string | null;
+  rejection_reason: string | null;
+  rejected_at: string | null;
+  status_changed_by: string | null;
   currency: string;
-  subtotal_amount_paise: number;
-  discount_amount_paise: number;
+  subtotal_gross_paise: number;
+  total_discount_paise: number;
+  subtotal_amount_paise?: number;
+  discount_amount_paise?: number;
   taxable_amount_paise: number;
   cgst_amount_paise: number;
   sgst_amount_paise: number;
   igst_amount_paise: number;
   total_tax_paise: number;
+  apply_round_off: number;
   round_off_paise: number;
   total_amount_paise: number;
   payment_terms: string | null;
   delivery_terms: string | null;
   notes: string | null;
+  dispatch_id: string | null;
+  sent_at: string | null;
+  sent_to_recipient: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DBCustomerReference {
+  id: string;
+  name: string;
+  short_name: string;
+  category: string;
+  sector: string;
+  logo_url: string | null;
+  logo_alt: string | null;
+  contact_person: string | null;
+  designation: string | null;
+  email: string | null;
+  phone: string | null;
+  buyer_gstin: string | null;
+  is_verified: number;
+  is_active: number;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface DBQuotationDispatch {
+  id: string;
+  quotation_id: string;
+  idempotency_key: string;
+  recipient_email: string;
+  recipient_name: string | null;
+  dispatch_status: 'PENDING' | 'TRANSMITTING' | 'ACCEPTED' | 'FAILED' | 'TIMED_OUT' | 'SIMULATED';
+  provider_name: string;
+  provider_message_id: string | null;
+  provider_idempotency_key: string;
+  error_message: string | null;
+  retry_count: number;
+  initiated_at: string;
+  completed_at: string | null;
+  initiated_by: string;
 }
 
 export interface DBQuotationItem {
@@ -251,7 +304,10 @@ export interface DBQuotationItem {
   discount_bps: number;
   discount_amount_paise: number;
   taxable_amount_paise: number;
-  gst_rate_bps: number;
+  gst_rate_bps: number | null;
+  cgst_rate_bps: number;
+  sgst_rate_bps: number;
+  igst_rate_bps: number;
   cgst_amount_paise: number;
   sgst_amount_paise: number;
   igst_amount_paise: number;

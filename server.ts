@@ -36,7 +36,7 @@ function resolvePort(): number {
 const PORT = resolvePort();
 
 // Administrative passcode configured via server environment variable (never exposed to client)
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'BabaAdmin#2026!Secure';
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE;
 
 // In-memory rate limiting store for authentication attempts
 interface RateLimitEntry {
@@ -95,6 +95,13 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(400).json({
       success: false,
       error: 'Admin passcode is required.'
+    });
+  }
+
+  if (!ADMIN_PASSCODE) {
+    return res.status(500).json({
+      success: false,
+      error: 'Authentication service unavailable: ADMIN_PASSCODE environment variable is not configured.'
     });
   }
 

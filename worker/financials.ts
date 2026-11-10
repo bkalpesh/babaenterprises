@@ -19,18 +19,18 @@ export function divideHalfUp(numerator: number, denominator: number): number {
 export interface LineItemInput {
   productId?: string | null;
   itemDescription: string;
-  hsnCode: string;
+  hsnCode?: string | null;
   quantityMicrounits: number; // 1 unit = 1,000,000 microunits
   unitOfMeasure?: string;
   unitPricePaise: number;
   discountBps?: number; // 100 bps = 1.00%
-  gstRateBps: number; // 0, 500, 1200, 1800, 2800 (MUST NOT be null when issuing)
+  gstRateBps?: number | null; // 0, 500, 1200, 1800, 2800, or null if unconfirmed
 }
 
 export interface ComputedLineItem {
   productId: string | null;
   itemDescription: string;
-  hsnCode: string;
+  hsnCode: string | null;
   quantityMicrounits: number;
   unitOfMeasure: string;
   unitPricePaise: number;
@@ -38,7 +38,7 @@ export interface ComputedLineItem {
   discountBps: number;
   discountAmountPaise: number;
   taxableAmountPaise: number;
-  gstRateBps: number;
+  gstRateBps: number | null;
   cgstRateBps: number;
   sgstRateBps: number;
   igstRateBps: number;
@@ -74,8 +74,12 @@ export function computeLineItem(
   if (item.unitPricePaise < 0) {
     throw new Error('Unit price cannot be negative');
   }
-  if (![0, 500, 1200, 1800, 2800].includes(item.gstRateBps)) {
-    throw new Error(`Invalid or unverified GST rate bps: ${item.gstRateBps}`);
+
+  const gstRateBps = item.gstRateBps !== undefined ? item.gstRateBps : null;
+  if (gstRateBps !== null) {
+    if (![0, 500, 1200, 1800, 2800].includes(gstRateBps)) {
+      throw new Error(`Invalid or unverified GST rate bps: ${gstRateBps}`);
+    }
   }
 
   // 1. Gross amount: (quantity_microunits * unit_price_paise) / 1,000,000
@@ -105,25 +109,29 @@ export function computeLineItem(
   let sgstAmountPaise = 0;
   let igstAmountPaise = 0;
 
-  if (isInterstate) {
-    igstRateBps = item.gstRateBps;
-    igstAmountPaise = divideHalfUp(taxableAmountPaise * igstRateBps, 10_000);
-  } else {
-    // Intrastate divides GST evenly between CGST and SGST
-    cgstRateBps = Math.floor(item.gstRateBps / 2);
-    sgstRateBps = Math.floor(item.gstRateBps / 2);
-    cgstAmountPaise = divideHalfUp(taxableAmountPaise * cgstRateBps, 10_000);
-    sgstAmountPaise = divideHalfUp(taxableAmountPaise * sgstRateBps, 10_000);
+  if (gstRateBps !== null) {
+    if (isInterstate) {
+      igstRateBps = gstRateBps;
+      igstAmountPaise = divideHalfUp(taxableAmountPaise * igstRateBps, 10_000);
+    } else {
+      // Intrastate divides GST evenly between CGST and SGST
+      cgstRateBps = Math.floor(gstRateBps / 2);
+      sgstRateBps = Math.floor(gstRateBps / 2);
+      cgstAmountPaise = divideHalfUp(taxableAmountPaise * cgstRateBps, 10_000);
+      sgstAmountPaise = divideHalfUp(taxableAmountPaise * sgstRateBps, 10_000);
+    }
   }
 
   // 5. Total line item amount
   const totalAmountPaise =
     taxableAmountPaise + cgstAmountPaise + sgstAmountPaise + igstAmountPaise;
 
+  const hsnCode = item.hsnCode && item.hsnCode.trim().length > 0 ? item.hsnCode.trim() : null;
+
   return {
     productId: item.productId || null,
     itemDescription: item.itemDescription.trim(),
-    hsnCode: item.hsnCode.trim(),
+    hsnCode,
     quantityMicrounits: item.quantityMicrounits,
     unitOfMeasure: item.unitOfMeasure || 'NOS',
     unitPricePaise: item.unitPricePaise,
@@ -131,7 +139,7 @@ export function computeLineItem(
     discountBps,
     discountAmountPaise,
     taxableAmountPaise,
-    gstRateBps: item.gstRateBps,
+    gstRateBps,
     cgstRateBps,
     sgstRateBps,
     igstRateBps,
@@ -216,3 +224,45 @@ export function formatPaiseToINR(paise: number): string {
 
   return `${isNegative ? '-' : ''}₹${rupeeStr}.${paiseStr}`;
 }
+
+/**
+ * Calculates statutory Indian financial year string (e.g. '2026-27', '2027-28', '2028-29')
+ * based on April 1 to March 31 cycle, with timezone-safe regex parsing of date strings.
+ */
+export function getFinancialYear(dateStr?: string | null): string {
+  let year: number;
+  let month: number; // 1 to 12
+  if (dateStr) {
+    const match = String(dateStr).match(/^(\d{4})-(\d{2})/);
+    if (match) {
+      year = parseInt(match[1], 10);
+      month = parseInt(match[2], 10);
+    } else {
+      const d = new Date(dateStr);
+      year = d.getFullYear();
+      month = d.getMonth() + 1;
+    }
+  } else {
+    const d = new Date();
+    year = d.getFullYear();
+    month = d.getMonth() + 1;
+  }
+  const startYear = month >= 4 ? year : year - 1;
+  const endYear = (startYear + 1) % 100;
+  return `${startYear}-${String(endYear).padStart(2, '0')}`;
+}
+
+/**
+ * Generates quotation prefix BE/QT/YY-YY/ from financial year string
+ */
+export function getQuotationPrefix(financialYear: string): string {
+  return `BE/QT/${financialYear.slice(2)}/`;
+}
+
+/**
+ * Generates invoice prefix BE/YY-YY/ from financial year string
+ */
+export function getInvoicePrefix(financialYear: string): string {
+  return `BE/${financialYear.slice(2)}/`;
+}
+

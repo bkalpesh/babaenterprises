@@ -1,5 +1,5 @@
-import { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../types';
-import { INITIAL_CUSTOMER_REFERENCES, INITIAL_ENQUIRIES, INITIAL_PRODUCTS, OFFICIAL_BUSINESS_INFO } from '../data/initialData';
+import type { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../types/index.ts';
+import { INITIAL_CUSTOMER_REFERENCES, INITIAL_ENQUIRIES, INITIAL_PRODUCTS, OFFICIAL_BUSINESS_INFO } from '../data/initialData.ts';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'baba_enterprises_products_v1',
