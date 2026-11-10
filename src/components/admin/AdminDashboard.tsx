@@ -692,46 +692,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Issue formal price offers with sequence prefix BE/QT/26-27/ and convert accepted quotes into GST tax invoices.
                     </p>
                   </div>
-                  <button
-                    onClick={async () => {
-                      const buyerName = window.prompt('Enter Buyer / Company Name:');
-                      if (!buyerName) return;
-                      const buyerGstin = window.prompt('Enter Buyer GSTIN (Optional, leave blank if B2C):') || undefined;
-                      const itemDesc = window.prompt('Enter Component Description (e.g. Precision Rubber Washers NBR 70):') || 'Custom Rubber Component';
-                      const qty = Number(window.prompt('Enter Quantity (Nos):', '1000') || 1000);
-                      const rate = Number(window.prompt('Enter Unit Rate in Rupees (e.g. 15.50):', '15.00') || 15);
-                      
-                      try {
-                        const res = await ApiService.createQuotation({
-                          buyer_name: buyerName.trim(),
-                          buyer_gstin: buyerGstin?.trim(),
-                          buyer_state_code: '27',
-                          buyer_state_name: 'Maharashtra',
-                          items: [
-                            {
-                              itemDescription: itemDesc,
-                              hsnCode: '4016',
-                              quantityMicrounits: qty * 1_000_000,
-                              unitPricePaise: Math.round(rate * 100),
-                              gstRateBps: 1800,
-                            }
-                          ]
-                        });
-                        if (res.success) {
-                          alert(`Quotation ${res.quotation.quotation_number} created successfully!`);
-                          loadAllData();
-                        } else {
-                          alert(`Error: ${res.error}`);
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={async () => {
+                        const buyerName = window.prompt('Enter Buyer / Company Name:');
+                        if (!buyerName) return;
+                        const buyerGstin = window.prompt('Enter Buyer GSTIN (Optional, leave blank if B2C):') || undefined;
+                        const itemDesc = window.prompt('Enter Component Description (e.g. Precision Rubber Washers NBR 70):') || 'Custom Rubber Component';
+                        const hsnInput = window.prompt('Enter 4-to-8 digit HSN Code (Required before dispatch, e.g. 40169990):', '4016') || '';
+                        const gstRateInput = window.prompt('Enter Confirmed GST Rate % (e.g. 0, 5, 12, 18, 28):', '18') || '';
+                        const qty = Number(window.prompt('Enter Quantity (Nos):', '1000') || 1000);
+                        const rate = Number(window.prompt('Enter Unit Rate in Rupees (e.g. 15.50):', '15.00') || 15);
+
+                        const hsnCode = hsnInput.trim().length >= 4 ? hsnInput.trim() : null;
+                        const parsedGstBps = gstRateInput.trim() !== '' ? Math.round(Number(gstRateInput.trim()) * 100) : null;
+                        
+                        try {
+                          const res = await ApiService.createQuotation({
+                            buyer_name: buyerName.trim(),
+                            buyer_gstin: buyerGstin?.trim(),
+                            buyer_state_code: '27',
+                            buyer_state_name: 'Maharashtra',
+                            items: [
+                              {
+                                itemDescription: itemDesc,
+                                hsnCode: hsnCode,
+                                quantityMicrounits: qty * 1_000_000,
+                                unitPricePaise: Math.round(rate * 100),
+                                gstRateBps: parsedGstBps,
+                              }
+                            ]
+                          });
+                          if (res.success) {
+                            alert(`Quotation ${res.quotation.quotation_number} created successfully! (Ensure GST rate & HSN are confirmed prior to dispatch)`);
+                            loadAllData();
+                          } else {
+                            alert(`Error: ${res.error}`);
+                          }
+                        } catch (err: any) {
+                          alert(`Failed: ${err.message}`);
                         }
-                      } catch (err: any) {
-                        alert(`Failed: ${err.message}`);
-                      }
-                    }}
-                    className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Create Quotation</span>
-                  </button>
+                      }}
+                      className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create Quotation</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+                  <span><strong>Statutory Requirement:</strong> Every line item must have a confirmed GST rate (0%, 5%, 12%, 18%, or 28%) and a verified 4-to-8 digit HSN code before a quotation can be dispatched to clients.</span>
                 </div>
 
                 {quotations.length === 0 ? (
@@ -823,8 +834,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const buyerAddr = window.prompt('Enter Buyer Factory / Office Address:', 'MIDC Industrial Area, Pune') || 'Bhosari MIDC';
                       const buyerGstin = window.prompt('Enter Buyer GSTIN (e.g. 27AAACB2026R1Z9 or leave empty for B2C):') || undefined;
                       const itemDesc = window.prompt('Enter Item Description:', 'High-Performance Rubber Bushes Shore 65A') || 'Precision Rubber Components';
+                      const hsnInput = window.prompt('Enter 4-to-8 digit HSN Code (Required before issuance, e.g. 40169990):', '4016') || '';
+                      const gstRateInput = window.prompt('Enter Confirmed GST Rate % (e.g. 0, 5, 12, 18, 28):', '18') || '';
                       const qty = Number(window.prompt('Enter Quantity (Units):', '500') || 500);
                       const rate = Number(window.prompt('Enter Unit Price in Rupees:', '32.00') || 32);
+
+                      const hsnCode = hsnInput.trim().length >= 4 ? hsnInput.trim() : null;
+                      const parsedGstBps = gstRateInput.trim() !== '' ? Math.round(Number(gstRateInput.trim()) * 100) : null;
                       
                       try {
                         const res = await ApiService.createInvoice({
@@ -838,15 +854,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           items: [
                             {
                               itemDescription: itemDesc,
-                              hsnCode: '4016',
+                              hsnCode: hsnCode,
                               quantityMicrounits: qty * 1_000_000,
                               unitPricePaise: Math.round(rate * 100),
-                              gstRateBps: 1800,
+                              gstRateBps: parsedGstBps,
                             }
                           ]
                         });
                         if (res.success) {
-                          alert('Draft Invoice created! You can now review and issue it.');
+                          alert('Draft Invoice created! Verify all line items have confirmed GST rates and HSN codes prior to final issuance.');
                           loadAllData();
                         } else {
                           alert(`Error: ${res.error}`);
@@ -860,6 +876,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Plus className="w-4 h-4" />
                     <span>Create Draft Invoice</span>
                   </button>
+                </div>
+
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+                  <span><strong>Statutory Compliance Requirement:</strong> All invoice line items must have confirmed GST rates and verified 4-to-8 digit HSN codes before final sequence allocation and issuance. Invoices with unconfirmed items cannot be issued.</span>
                 </div>
 
                 {invoices.length === 0 ? (

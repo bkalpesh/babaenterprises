@@ -29,6 +29,7 @@ export interface CustomerReference {
   category: string;
   sector: string;
   isActive: boolean;
+  isVerified?: boolean;
   logo?: string;
   logoAlt?: string;
 }

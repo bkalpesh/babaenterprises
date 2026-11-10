@@ -4,7 +4,7 @@
 // Hardened Authentication, Timing-Safe Comparison, Rate Limiting, R2 Protection
 // ==============================================================================
 
-import {
+import type {
   Env,
   BusinessSettings,
   DBProduct,
@@ -13,11 +13,18 @@ import {
   DBInvoiceItem,
   DBQuotation,
   DBQuotationItem,
+  DBQuotationDispatch,
   ExecutionContext,
-} from './types';
-import { computeLineItem, computeTotals } from './financials';
-import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin';
-import { generateInvoiceHTML } from './pdf';
+} from './types.ts';
+import {
+  computeLineItem,
+  computeTotals,
+  getFinancialYear,
+  getQuotationPrefix,
+  getInvoicePrefix,
+} from './financials.ts';
+import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin.ts';
+import { generateInvoiceHTML } from './pdf.ts';
 
 // ------------------------------------------------------------------------------
 // Cryptographically Secure Helpers & Timing-Safe Comparison
@@ -154,16 +161,34 @@ async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token) return false;
-  const secret = env.JWT_SECRET || env.ADMIN_PASSCODE || 'BabaEnterprises#StagingSecret2026';
-  return await verifySignedToken(token, secret);
+  // Fail closed if required JWT_SECRET or ADMIN_PASSCODE is not configured
+  if (!env.JWT_SECRET || !env.ADMIN_PASSCODE) return false;
+  return await verifySignedToken(token, env.JWT_SECRET);
+}
+
+async function getAuthActor(request: Request, env: Env): Promise<string> {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader) return 'ADMIN_STAGING';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token || !env.JWT_SECRET) return 'ADMIN_STAGING';
+  try {
+    const isValid = await verifySignedToken(token, env.JWT_SECRET);
+    if (!isValid) return 'ADMIN_STAGING';
+    const parts = token.split('.');
+    if (parts.length >= 2) {
+      const payload = JSON.parse(atob(parts[0]));
+      return payload.actor || payload.user || payload.email || payload.role || 'ADMIN_STAGING';
+    }
+  } catch {}
+  return 'ADMIN_STAGING';
 }
 
 // ------------------------------------------------------------------------------
 // Main Cloudflare Worker Fetch Handler
 // ------------------------------------------------------------------------------
 
-export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+export const worker = {
+  async fetch(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
     const clientIp = request.headers.get('cf-connecting-ip') || 'unknown-client';
@@ -198,8 +223,16 @@ export default {
           );
         }
 
+        // Fail closed if required secrets are missing
+        if (!env.ADMIN_PASSCODE || !env.JWT_SECRET) {
+          return errorResponse(
+            'Authentication service unavailable: ADMIN_PASSCODE and JWT_SECRET must be configured in environment secrets.',
+            500
+          );
+        }
+
         const body = (await request.json()) as { passcode?: string };
-        const configuredPasscode = env.ADMIN_PASSCODE || 'BabaAdmin#2026!Secure';
+        const configuredPasscode = env.ADMIN_PASSCODE;
 
         if (!body.passcode || typeof body.passcode !== 'string') {
           return errorResponse('Admin passcode is required.', 400);
@@ -220,8 +253,7 @@ export default {
 
         // Successful login
         clearRateLimit(clientIp);
-        const secret = env.JWT_SECRET || env.ADMIN_PASSCODE || 'BabaEnterprises#StagingSecret2026';
-        const token = await createSignedToken(secret);
+        const token = await createSignedToken(env.JWT_SECRET);
 
         return jsonResponse({
           success: true,
@@ -352,8 +384,17 @@ export default {
       // ------------------------------------------------------------------------
       if (url.pathname === '/api/references') {
         if (method === 'GET') {
-          const refs = await env.DB.prepare('SELECT * FROM customer_references ORDER BY sort_order ASC').all();
-          return jsonResponse({ success: true, references: refs.results });
+          const isAdmin = await checkAdminAuth(request, env);
+          if (isAdmin) {
+            const refs = await env.DB.prepare('SELECT * FROM customer_references ORDER BY sort_order ASC').all();
+            return jsonResponse({ success: true, references: refs.results });
+          } else {
+            // Unverified references must NEVER be presented publicly as confirmed customers
+            const refs = await env.DB.prepare(
+              'SELECT * FROM customer_references WHERE is_verified = 1 AND is_active = 1 ORDER BY sort_order ASC'
+            ).all();
+            return jsonResponse({ success: true, references: refs.results });
+          }
         }
         if (method === 'POST') {
           if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
@@ -520,12 +561,12 @@ export default {
               {
                 productId: it.productId || null,
                 itemDescription: it.itemDescription || it.name,
-                hsnCode: it.hsnCode || '4016',
+                hsnCode: it.hsnCode ? String(it.hsnCode).trim() : (it.hsn_code ? String(it.hsn_code).trim() : null),
                 quantityMicrounits: Number(it.quantityMicrounits || Number(it.quantity || 1) * 1_000_000),
                 unitOfMeasure: it.unitOfMeasure || 'NOS',
                 unitPricePaise: Number(it.unitPricePaise || Math.round(Number(it.rate || 0) * 100)),
                 discountBps: Number(it.discountBps || 0),
-                gstRateBps: Number(it.gstRateBps !== undefined ? it.gstRateBps : 1800),
+                gstRateBps: it.gstRateBps !== undefined && it.gstRateBps !== null ? Number(it.gstRateBps) : (it.gst_rate_bps !== undefined && it.gst_rate_bps !== null ? Number(it.gst_rate_bps) : null),
               },
               !!isInterstate
             )
@@ -534,9 +575,10 @@ export default {
           const totals = computeTotals(computedItems, true);
           const quoteId = 'qt-' + crypto.randomUUID().slice(0, 8);
 
-          // Configurable quotation prefix (default: BE/QT/26-27/)
-          const prefix = env.GST_INVOICE_PREFIX ? env.GST_INVOICE_PREFIX.replace('BE/', 'BE/QT/') : 'BE/QT/26-27/';
-          const fy = '2026-27';
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const quotationDate = b.quotation_date || todayStr;
+          const fy = b.financial_year || getFinancialYear(quotationDate);
+          const prefix = getQuotationPrefix(fy);
           const maxSeqRow = await env.DB.prepare(
             'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM quotation_sequence_log WHERE financial_year = ?'
           )
@@ -544,22 +586,25 @@ export default {
             .first<{ maxSeq: number }>();
           const nextSeq = (maxSeqRow?.maxSeq || 0) + 1;
           const quoteNumber = `${prefix}${String(nextSeq).padStart(4, '0')}`;
-          const todayStr = new Date().toISOString().slice(0, 10);
           const validUntilDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
           await env.DB.batch([
             env.DB.prepare(`
               INSERT INTO quotations (
-                id, quotation_number, quotation_date, valid_until, buyer_name, buyer_company,
+                id, quotation_number, quotation_prefix, sequence_number, financial_year,
+                quotation_date, valid_until, buyer_name, buyer_company,
                 buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
-                status, subtotal_amount_paise, discount_amount_paise, taxable_amount_paise,
+                status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                 cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                 round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
               quoteId,
               quoteNumber,
-              b.quotation_date || todayStr,
+              prefix,
+              nextSeq,
+              fy,
+              quotationDate,
               b.valid_until || validUntilDate,
               b.buyer_name,
               b.buyer_company || null,
@@ -592,8 +637,9 @@ export default {
                 id, quotation_id, line_number, product_id, item_description, hsn_code,
                 quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
                 discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
                 cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
                 'qti-' + crypto.randomUUID().slice(0, 8),
                 quoteId,
@@ -609,6 +655,9 @@ export default {
                 it.discountAmountPaise,
                 it.taxableAmountPaise,
                 it.gstRateBps,
+                it.cgstRateBps,
+                it.sgstRateBps,
+                it.igstRateBps,
                 it.cgstAmountPaise,
                 it.sgstAmountPaise,
                 it.igstAmountPaise,
@@ -622,6 +671,574 @@ export default {
         }
       }
 
+      // ------------------------------------------------------------------------
+      // 7B. QUOTATION DISPATCH & STATUS TRANSITIONS
+      // ------------------------------------------------------------------------
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/send$/) && method === 'POST') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const actor = await getAuthActor(request, env);
+        const quoteId = url.pathname.split('/')[3];
+        const body = (await request.json()) as {
+          recipient_email?: string;
+          recipient_name?: string;
+          custom_message?: string;
+        };
+
+        if (!body.recipient_email || !body.recipient_email.includes('@')) {
+          return errorResponse('Valid recipient email address is required for quotation dispatch.');
+        }
+
+        const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
+          .bind(quoteId)
+          .first<DBQuotation>();
+        if (!quote) return errorResponse('Quotation not found.', 404);
+
+        const recipient = body.recipient_name
+          ? `${body.recipient_name.trim()} <${body.recipient_email.trim()}>`
+          : body.recipient_email.trim();
+        const sentAt = new Date().toISOString();
+
+        // Determine durable idempotency key from header or default deterministic quotation key
+        const idempotencyKey = request.headers.get('X-Idempotency-Key') ||
+          request.headers.get('Idempotency-Key') ||
+          `disp-${quote.id}-${quote.sequence_number || 1}`;
+
+        // Check for existing dispatch records for this idempotency key or quotation
+        const existingDispatch = await env.DB.prepare(
+          'SELECT * FROM quotation_dispatches WHERE idempotency_key = ? OR quotation_id = ? ORDER BY initiated_at DESC LIMIT 1'
+        ).bind(idempotencyKey, quoteId).first<DBQuotationDispatch>();
+
+        // 7.B RECIPIENT VALIDATION BEFORE ANY RECOVERY OR RETRY BRANCH:
+        // Validate recipient before ANY existing-dispatch recovery branch.
+        // Recovery must use the original persisted recipient. It must never synchronize a quotation to Sent using a different recipient supplied by a later request.
+        if (existingDispatch) {
+          if (existingDispatch.recipient_email.toLowerCase() !== body.recipient_email.trim().toLowerCase()) {
+            return errorResponse(
+              `Cannot alter recipient to '${body.recipient_email.trim()}' under existing dispatch record. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
+              422
+            );
+          }
+        }
+
+        // IDEMPOTENT RECOVERY & DUPLICATE PROTECTION:
+        // If an existing dispatch was already ACCEPTED by the provider:
+        if (existingDispatch && existingDispatch.dispatch_status === 'ACCEPTED') {
+          // If the quotation is already in Sent status, return the existing dispatch result idempotently
+          if (quote.status === 'Sent') {
+            return jsonResponse({
+              success: true,
+              quotation: quote,
+              dispatch: existingDispatch,
+              idempotent: true,
+              message: 'Quotation was already dispatched and confirmed by provider (idempotent response; duplicate email prevented).',
+            });
+          }
+
+          // Recovery must use the original persisted recipient, not whatever was passed in the retry request
+          const originalRecipient = existingDispatch.recipient_name
+            ? `${existingDispatch.recipient_name.trim()} <${existingDispatch.recipient_email.trim()}>`
+            : existingDispatch.recipient_email.trim();
+
+          // If the quotation is still in Draft (Provider accepted, but database update previously failed):
+          // RECOVER: Complete the pending quotation status update and audit log without sending another email.
+          await env.DB.batch([
+            env.DB.prepare(`
+              UPDATE quotations SET
+                status = 'Sent',
+                dispatch_id = ?,
+                sent_at = coalesce(sent_at, ?),
+                sent_to_recipient = ?,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(existingDispatch.id, existingDispatch.completed_at || sentAt, originalRecipient, quoteId),
+            env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_RECOVERED_SYNC', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                dispatch_id: existingDispatch.id,
+                provider_message_id: existingDispatch.provider_message_id,
+                recipient: originalRecipient,
+                recovery_note: 'Recovered pending quotation status after prior provider acceptance (original persisted recipient preserved)',
+              })
+            ),
+          ]);
+
+          const updatedQuote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
+          return jsonResponse({
+            success: true,
+            quotation: updatedQuote,
+            dispatch: existingDispatch,
+            recovered: true,
+            message: 'Recovered and synchronized pending quotation status after prior provider acceptance (duplicate email prevented).',
+          });
+        }
+
+        // DISPATCH SAFETY & RECOVERY CONSTRAINTS:
+        if (existingDispatch) {
+          // 1. Unresolved In-Flight Transmission Protection:
+          // Do NOT automatically resend merely because an arbitrary duration elapsed.
+          // If a dispatch is still in TRANSMITTING status, automatic resending is blocked to prevent duplicate emails.
+          if (existingDispatch.dispatch_status === 'TRANSMITTING') {
+            return errorResponse(
+              'Dispatch transmission is currently in progress or previous attempt outcome is unresolved (status: TRANSMITTING). Automatic resending is blocked to prevent duplicate transmissions. Please wait or perform administrative reconciliation.',
+              409
+            );
+          }
+
+          // 2. Outbound Payload & Recipient Invariance:
+          // Prevent retrying with an altered recipient under the same dispatch / idempotency key.
+          if (existingDispatch.recipient_email.toLowerCase() !== body.recipient_email.trim().toLowerCase()) {
+            return errorResponse(
+              `Cannot alter recipient to '${body.recipient_email.trim()}' under existing dispatch key. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
+              422
+            );
+          }
+
+          // 3. Provider Idempotency Retention Window Check (Resend 24-Hour Cache Window):
+          // Resend retains Idempotency-Key records for 24 hours (86,400,000 ms).
+          // If a retry is attempted after the provider's 24-hour retention window, safe reconciliation cannot be guaranteed
+          // at the provider layer. Require manual review rather than risking duplicate transmission.
+          const dispatchAgeMs = Date.now() - new Date(existingDispatch.initiated_at).getTime();
+          if (dispatchAgeMs > 86400000) {
+            return errorResponse(
+              'Provider 24-hour idempotency retention window has expired for this dispatch record. The upstream email transport can no longer guarantee duplicate prevention for this key. Manual administrative review is required before re-attempting dispatch.',
+              422
+            );
+          }
+        }
+
+        if (quote.status !== 'Draft') {
+          return errorResponse(`Quotation is already in ${quote.status} status. Only Draft quotations can be dispatched.`);
+        }
+
+        // 6. GST AND HSN SAFETY VALIDATION BEFORE DISPATCH:
+        // Never dispatch a quotation with missing GST classification or HSN
+        const quoteItems = await env.DB.prepare(
+          'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY line_number ASC'
+        ).bind(quoteId).all<DBQuotationItem>();
+
+        if (!quoteItems.results || quoteItems.results.length === 0) {
+          return errorResponse('Quotation must contain at least one line item before dispatch.', 422);
+        }
+
+        for (const it of quoteItems.results) {
+          if (it.gst_rate_bps === null || it.gst_rate_bps === undefined) {
+            return errorResponse(
+              `Quotation item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) GST rate. Administrator must specify a confirmed GST rate before dispatch.`,
+              422
+            );
+          }
+          if (!it.hsn_code || it.hsn_code.trim().length < 4) {
+            return errorResponse(
+              `Quotation item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) HSN code. Administrator must specify a verified 4-to-8 digit HSN code before dispatch.`,
+              422
+            );
+          }
+        }
+
+        // STAGING CREDENTIAL ISOLATION:
+        // Use ONLY dedicated STAGING_EMAIL_API_KEY. Do not fall back to generic or production credentials.
+        const stagingApiKey = env.STAGING_EMAIL_API_KEY;
+
+        if (stagingApiKey) {
+          // LIVE / STAGING EMAIL PROVIDER INTEGRATION WITH OUTBOX PATTERN
+          // DURABLE IDEMPOTENCY KEY GUARANTEE:
+          // A retry of the same dispatch MUST reuse the exact same provider_idempotency_key.
+          // It must NEVER generate a new key on retry.
+          const dispatchId = existingDispatch ? existingDispatch.id : ('disp-' + crypto.randomUUID().slice(0, 8));
+          const providerIdempotencyKey = existingDispatch?.provider_idempotency_key || `baba-qt-disp-${quote.id}`;
+
+          if (existingDispatch) {
+            // Safe retry: update existing dispatch record with TRANSMITTING status, increment retry count, KEEP SAME provider_idempotency_key
+            await env.DB.prepare(`
+              UPDATE quotation_dispatches SET
+                dispatch_status = 'TRANSMITTING',
+                retry_count = retry_count + 1,
+                initiated_at = datetime('now'),
+                error_message = NULL
+              WHERE id = ?
+            `).bind(dispatchId).run();
+
+            // Record every retry attempt in audit log
+            await env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_RETRY_ATTEMPTED', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                dispatch_id: dispatchId,
+                retry_count: existingDispatch.retry_count + 1,
+                provider_idempotency_key: providerIdempotencyKey,
+                recipient,
+                previous_status: existingDispatch.dispatch_status,
+              })
+            ).run();
+          } else {
+            // Initial dispatch: insert new durable record with TRANSMITTING status before outbound network request
+            await env.DB.prepare(`
+              INSERT INTO quotation_dispatches (
+                id, quotation_id, idempotency_key, recipient_email, recipient_name,
+                dispatch_status, provider_name, provider_idempotency_key, retry_count,
+                initiated_at, initiated_by
+              ) VALUES (?, ?, ?, ?, ?, 'TRANSMITTING', 'RESEND_STAGING', ?, 0, datetime('now'), ?)
+            `).bind(
+              dispatchId,
+              quoteId,
+              idempotencyKey,
+              body.recipient_email.trim(),
+              body.recipient_name ? body.recipient_name.trim() : null,
+              providerIdempotencyKey,
+              actor
+            ).run();
+          }
+
+          let providerAccepted = false;
+          let providerMessageId: string | null = null;
+          let providerError: string | null = null;
+          let isTimeout = false;
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => {
+            isTimeout = true;
+            controller.abort();
+          }, 10000); // 10-second timeout
+
+          try {
+            const providerResp = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${stagingApiKey}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': providerIdempotencyKey,
+              },
+              body: JSON.stringify({
+                from: 'BABA ENTERPRISES <quotations@babaenterprises.com>',
+                to: [body.recipient_email.trim()],
+                subject: `Quotation ${quote.quotation_number} from BABA ENTERPRISES`,
+                text: `Dear Customer,\n\nPlease find details for quotation ${quote.quotation_number}.\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\n\nBABA ENTERPRISES\nBhosari, Pune\n\nNote: Binary PDF is not attached to this email transmission.`,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (providerResp.ok) {
+              const resData = (await providerResp.json()) as { id?: string };
+              // 7.A: Never fabricate a provider message ID using a timestamp or generated fallback.
+              // A quotation may become Sent only if the provider returns a genuine, non-empty message ID and a successful response.
+              if (resData && typeof resData.id === 'string' && resData.id.trim().length > 0) {
+                providerAccepted = true;
+                providerMessageId = resData.id.trim();
+              } else {
+                providerAccepted = false;
+                providerError = 'Provider returned successful HTTP response but missing or empty message ID.';
+              }
+            } else {
+              const errBody = await providerResp.text();
+              providerError = `HTTP ${providerResp.status}: ${errBody}`;
+            }
+          } catch (err: any) {
+            clearTimeout(timeoutId);
+            if (isTimeout || err.name === 'AbortError') {
+              isTimeout = true;
+              providerError = 'Provider request timed out after 10000ms. Transmission outcome unknown.';
+            } else {
+              providerError = err.message || 'Network transport failure';
+            }
+          }
+
+          // Case A: Provider timed out with unknown outcome
+          if (isTimeout) {
+            await env.DB.prepare(`
+              UPDATE quotation_dispatches SET
+                dispatch_status = 'TIMED_OUT',
+                error_message = ?,
+                completed_at = datetime('now')
+              WHERE id = ?
+            `).bind(providerError, dispatchId).run();
+
+            await env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_TIMED_OUT', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                dispatch_id: dispatchId,
+                quotation_number: quote.quotation_number,
+                recipient,
+                error: providerError,
+              })
+            ).run();
+
+            return errorResponse(`Email dispatch timed out with provider. Transmission outcome is unknown. Quotation strictly remains in Draft for safe review.`, 504);
+          }
+
+          // Case B: Provider rejected transmission (HTTP 4xx/5xx or network error)
+          if (!providerAccepted) {
+            await env.DB.prepare(`
+              UPDATE quotation_dispatches SET
+                dispatch_status = 'FAILED',
+                error_message = ?,
+                completed_at = datetime('now')
+              WHERE id = ?
+            `).bind(providerError, dispatchId).run();
+
+            await env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_FAILED', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                dispatch_id: dispatchId,
+                quotation_number: quote.quotation_number,
+                recipient,
+                error: providerError,
+                attempted_at: sentAt,
+              })
+            ).run();
+
+            return errorResponse(`Email transport provider rejected dispatch: ${providerError}. Quotation strictly remains in Draft.`, 502);
+          }
+
+          // Case C: Provider ACCEPTED transmission
+          // Step 1: Record durable ACCEPTED state in quotation_dispatches first
+          const completedAt = new Date().toISOString();
+          await env.DB.prepare(`
+            UPDATE quotation_dispatches SET
+              dispatch_status = 'ACCEPTED',
+              provider_message_id = ?,
+              completed_at = ?
+            WHERE id = ?
+          `).bind(providerMessageId, completedAt, dispatchId).run();
+
+          // Step 2: Update quotation to Sent and insert audit log
+          await env.DB.batch([
+            env.DB.prepare(`
+              UPDATE quotations SET
+                status = 'Sent',
+                dispatch_id = ?,
+                sent_at = ?,
+                sent_to_recipient = ?,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(dispatchId, sentAt, recipient, quoteId),
+            env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_TRANSMITTED', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                quotation_number: quote.quotation_number,
+                sent_to: recipient,
+                sent_at: sentAt,
+                dispatch_id: dispatchId,
+                provider_message_id: providerMessageId,
+                transport_provider: 'RESEND_STAGING',
+                transmission_status: 'ACCEPTED_BY_PROVIDER',
+                pdf_attached: false,
+                note: 'Accepted by provider; external inbox delivery is subject to recipient MTA acceptance.',
+              })
+            ),
+          ]);
+
+          const updatedQuote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
+            .bind(quoteId)
+            .first<DBQuotation>();
+
+          return jsonResponse({
+            success: true,
+            quotation: updatedQuote,
+            dispatch: {
+              dispatch_id: dispatchId,
+              status: 'Sent',
+              provider_accepted: true,
+              provider_message_id: providerMessageId,
+              sent_at: sentAt,
+              sent_to_recipient: recipient,
+              pdf_attached: false,
+              transport_note: 'Accepted by email provider; external inbox delivery is subject to recipient MTA acceptance.',
+            },
+          });
+        } else {
+          // STAGING SAFETY MODE (NO STAGING_EMAIL_API_KEY CONFIGURED)
+          // Insert durable SIMULATED dispatch record. Quotation strictly remains in Draft.
+          const simDispatchId = 'disp-sim-' + crypto.randomUUID().slice(0, 8);
+          await env.DB.batch([
+            env.DB.prepare(`
+              INSERT INTO quotation_dispatches (
+                id, quotation_id, idempotency_key, recipient_email, recipient_name,
+                dispatch_status, provider_name, provider_idempotency_key,
+                initiated_at, completed_at, initiated_by
+              ) VALUES (?, ?, ?, ?, ?, 'SIMULATED', 'STAGING_SIMULATION', ?, datetime('now'), datetime('now'), ?)
+            `).bind(
+              simDispatchId,
+              quoteId,
+              idempotencyKey,
+              body.recipient_email.trim(),
+              body.recipient_name ? body.recipient_name.trim() : null,
+              'sim-' + crypto.randomUUID(),
+              actor
+            ),
+            env.DB.prepare(`
+              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+              VALUES (?, 'QUOTATION', ?, 'DISPATCH_SIMULATED', ?, ?)
+            `).bind(
+              'audit-' + crypto.randomUUID().slice(0, 8),
+              quoteId,
+              actor,
+              JSON.stringify({
+                dispatch_id: simDispatchId,
+                quotation_number: quote.quotation_number,
+                attempted_recipient: recipient,
+                attempted_at: sentAt,
+                reason: 'NO_ACTIVE_STAGING_EMAIL_API_KEY',
+                status: 'DRAFT_MAINTAINED',
+                pdf_attached: false,
+              })
+            ),
+          ]);
+
+          return jsonResponse({
+            success: true,
+            status: 'Draft',
+            simulated: true,
+            dispatch_id: simDispatchId,
+            message: 'Staging environment has no active STAGING_EMAIL_API_KEY configured. Simulation recorded in quotation_dispatches and audit_logs. Quotation strictly remains in Draft status. PDF binary dispatch is not claimed/implemented.',
+            quotation: quote,
+          });
+        }
+      }
+
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/status$/) && method === 'PATCH') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized: Valid administrator authorization token is required.', 401);
+        const actor = await getAuthActor(request, env);
+        const quoteId = url.pathname.split('/')[3];
+        const body = (await request.json()) as {
+          status?: string;
+          reason?: string;
+          approval_evidence?: string;
+          admin_confirmation?: string;
+          rejection_reason?: string;
+          expiry_reason?: string;
+        };
+
+        if (!body.status) return errorResponse('Target status is required.');
+
+        // Guard against bypassing the verified dispatch workflow
+        if (body.status === 'Sent') {
+          return errorResponse(
+            "Direct status transition to 'Sent' is prohibited. Quotations must be dispatched through the /api/quotations/:id/send endpoint with verified transport.",
+            403
+          );
+        }
+
+        if (body.status === 'Draft') {
+          return errorResponse('Cannot revert active or resolved quotation to Draft.', 400);
+        }
+
+        if (body.status === 'Converted') {
+          return errorResponse(
+            'Quotation conversion must be executed through /api/quotations/:id/convert-to-invoice to generate the corresponding invoice atomically.',
+            400
+          );
+        }
+
+        const allowedTransitions = ['Accepted', 'Rejected', 'Expired'];
+        if (!allowedTransitions.includes(body.status)) {
+          return errorResponse(`Invalid target status '${body.status}'. Permitted transitions on this endpoint: ${allowedTransitions.join(', ')}.`, 400);
+        }
+
+        const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
+          .bind(quoteId)
+          .first<DBQuotation>();
+        if (!quote) return errorResponse('Quotation not found.', 404);
+
+        // Precondition: Quotation must be Sent before being Accepted, Rejected, or Expired
+        if (quote.status !== 'Sent') {
+          return errorResponse(
+            `Quotation must be in 'Sent' status before transitioning to '${body.status}'. Current status is '${quote.status}'.`,
+            400
+          );
+        }
+
+        // Rigorous Evidence and Authorization Validation per Target Status
+        let evidenceSummary = '';
+
+        if (body.status === 'Accepted') {
+          const evidence = (body.approval_evidence || body.admin_confirmation || body.reason || '').trim();
+          if (!evidence || evidence.length < 10) {
+            return errorResponse(
+              "Transition to 'Accepted' requires verified client approval evidence or documented administrator confirmation (minimum 10 characters, e.g. PO number, confirmation email date, or letter reference).",
+              400
+            );
+          }
+          evidenceSummary = evidence;
+        } else if (body.status === 'Rejected') {
+          const rejReason = (body.rejection_reason || body.reason || '').trim();
+          if (!rejReason || rejReason.length < 5) {
+            return errorResponse(
+              "Transition to 'Rejected' requires a documented rejection reason (minimum 5 characters).",
+              400
+            );
+          }
+          evidenceSummary = rejReason;
+        } else if (body.status === 'Expired') {
+          const today = new Date().toISOString().split('T')[0];
+          const isPastValidity = quote.valid_until && quote.valid_until < today;
+          const expReason = (body.expiry_reason || body.reason || '').trim();
+          if (!isPastValidity && (!expReason || expReason.length < 10)) {
+            return errorResponse(
+              `Quotation validity period (${quote.valid_until}) has not expired yet. Premature expiration requires documented administrator justification (minimum 10 characters).`,
+              400
+            );
+          }
+          evidenceSummary = isPastValidity ? (expReason || 'VALIDITY_EXPIRED') : expReason;
+        }
+
+        // ATOMIC D1 BATCH: Update status and insert audit log together with authenticated actor
+        await env.DB.batch([
+          env.DB.prepare(`
+            UPDATE quotations SET
+              status = ?,
+              updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(body.status, quoteId),
+          env.DB.prepare(`
+            INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+            VALUES (?, 'QUOTATION', ?, ?, ?, ?)
+          `).bind(
+            'audit-' + crypto.randomUUID().slice(0, 8),
+            quoteId,
+            `STATUS_TRANSITION_${body.status.toUpperCase()}`,
+            actor,
+            JSON.stringify({
+              previous_status: quote.status,
+              new_status: body.status,
+              evidence_or_reason: evidenceSummary,
+              authorized_by: actor,
+              timestamp: new Date().toISOString(),
+            })
+          ),
+        ]);
+
+        const updatedQuote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
+          .bind(quoteId)
+          .first<DBQuotation>();
+
+        return jsonResponse({ success: true, quotation: updatedQuote });
+      }
+
       // Convert Quotation to Invoice (Idempotent & Transactional)
       if (url.pathname.match(/^\/api\/quotations\/[^/]+\/convert-to-invoice$/) && method === 'POST') {
         if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
@@ -629,6 +1246,7 @@ export default {
         const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
         if (!quote) return errorResponse('Quotation not found.', 404);
 
+        // 1. Idempotency Check: Return existing converted invoice if already converted
         if (quote.status === 'Converted' && quote.converted_invoice_id) {
           const existingInv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?')
             .bind(quote.converted_invoice_id)
@@ -640,6 +1258,29 @@ export default {
           });
         }
 
+        // 2. Prevent duplicate invoice creation if another invoice references this quotation
+        const alreadyReferenced = await env.DB.prepare(
+          'SELECT id FROM invoices WHERE reference_quotation_id = ?'
+        ).bind(quote.id).first<{ id: string }>();
+        if (alreadyReferenced) {
+          const existingInv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?')
+            .bind(alreadyReferenced.id)
+            .first();
+          return jsonResponse({
+            success: true,
+            invoice: existingInv,
+            message: 'Quotation was already converted into invoice (idempotent response).',
+          });
+        }
+
+        // 3. Status Gate: Strictly verify only Accepted quotations can be converted
+        if (quote.status !== 'Accepted') {
+          return errorResponse(
+            `Only Accepted quotations can be converted into invoices. Quotation is currently in '${quote.status}' status.`,
+            422
+          );
+        }
+
         const qItems = await env.DB.prepare(
           'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY line_number ASC'
         )
@@ -649,37 +1290,70 @@ export default {
           return errorResponse('Quotation has no items.');
         }
 
-        const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
-        const isInterstate = quote.buyer_state_code !== '27' ? 1 : 0;
+        // Validate that quotation items have confirmed GST and HSN before converting
+        for (const it of qItems.results) {
+          if (it.gst_rate_bps === null || it.gst_rate_bps === undefined) {
+            return errorResponse(
+              `Quotation line item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) GST rate. All items must have confirmed GST rates before converting to invoice.`,
+              422
+            );
+          }
+          if (!it.hsn_code || it.hsn_code.trim().length < 4) {
+            return errorResponse(
+              `Quotation line item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) HSN code. All items must have verified 4-to-8 digit HSN codes before converting to invoice.`,
+              422
+            );
+          }
+        }
 
+        // Fail closed if required seller configuration is missing
+        if (!env.SELLER_GSTIN || !env.SELLER_STATE_CODE) {
+          return errorResponse(
+            'Seller configuration missing: SELLER_GSTIN and SELLER_STATE_CODE must be configured in environment.',
+            500
+          );
+        }
+
+        const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
+        const isInterstate = quote.buyer_state_code !== env.SELLER_STATE_CODE ? 1 : 0;
+        const targetFY = quote.financial_year || getFinancialYear(quote.quotation_date);
+        const invoicePrefix = getInvoicePrefix(targetFY);
+
+        // ATOMIC D1 BATCH: Insert invoice with exact quotation amounts, update quotation, and insert line items
         await env.DB.batch([
           env.DB.prepare(`
             INSERT INTO invoices (
-              id, status, financial_year, seller_gstin, seller_state_code,
-              buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code,
+              id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+              buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
               buyer_gstin, is_interstate, place_of_supply, reference_quotation_id,
               subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
               cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
               apply_round_off, round_off_paise, total_invoice_amount_paise
-            ) VALUES (?, 'Draft', '2026-27', '27AGCPB8322L1ZG', '27', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             invoiceId,
+            targetFY,
+            invoicePrefix,
+            env.SELLER_GSTIN,
+            env.SELLER_STATE_CODE,
             quote.buyer_name,
             quote.buyer_company,
             quote.buyer_address,
             quote.buyer_state_name,
             quote.buyer_state_code,
+            quote.buyer_pincode || null,
             quote.buyer_gstin,
             isInterstate,
             quote.buyer_state_name + ' (' + quote.buyer_state_code + ')',
             quote.id,
-            quote.subtotal_amount_paise,
-            quote.discount_amount_paise,
+            quote.subtotal_gross_paise,
+            quote.total_discount_paise,
             quote.taxable_amount_paise,
             quote.cgst_amount_paise,
             quote.sgst_amount_paise,
             quote.igst_amount_paise,
             quote.total_tax_paise,
+            quote.apply_round_off,
             quote.round_off_paise,
             quote.total_amount_paise
           ),
@@ -701,7 +1375,7 @@ export default {
               it.line_number,
               it.product_id,
               it.item_description,
-              it.hsn_code || '4016',
+              it.hsn_code,
               it.quantity_microunits,
               it.unit_of_measure,
               it.unit_price_paise,
@@ -710,9 +1384,9 @@ export default {
               it.discount_amount_paise,
               it.taxable_amount_paise,
               it.gst_rate_bps,
-              isInterstate ? 0 : Math.floor(it.gst_rate_bps / 2),
-              isInterstate ? 0 : Math.floor(it.gst_rate_bps / 2),
-              isInterstate ? it.gst_rate_bps : 0,
+              it.cgst_rate_bps,
+              it.sgst_rate_bps,
+              it.igst_rate_bps,
               it.cgst_amount_paise,
               it.sgst_amount_paise,
               it.igst_amount_paise,
@@ -747,33 +1421,47 @@ export default {
               {
                 productId: it.productId || null,
                 itemDescription: it.itemDescription || it.name,
-                hsnCode: it.hsnCode || '4016',
+                hsnCode: it.hsnCode ? String(it.hsnCode).trim() : (it.hsn_code ? String(it.hsn_code).trim() : null),
                 quantityMicrounits: Number(it.quantityMicrounits || Number(it.quantity || 1) * 1_000_000),
                 unitOfMeasure: it.unitOfMeasure || 'NOS',
                 unitPricePaise: Number(it.unitPricePaise || Math.round(Number(it.rate || 0) * 100)),
                 discountBps: Number(it.discountBps || 0),
-                gstRateBps: Number(it.gstRateBps !== undefined ? it.gstRateBps : 1800),
+                gstRateBps: it.gstRateBps !== undefined && it.gstRateBps !== null ? Number(it.gstRateBps) : (it.gst_rate_bps !== undefined && it.gst_rate_bps !== null ? Number(it.gst_rate_bps) : null),
               },
               !!isInterstate
             )
           );
 
+          // Fail closed if required seller configuration is missing
+          if (!env.SELLER_GSTIN || !env.SELLER_STATE_CODE) {
+            return errorResponse(
+              'Seller configuration missing: SELLER_GSTIN and SELLER_STATE_CODE must be configured in environment.',
+              500
+            );
+          }
+
           const totals = computeTotals(computedItems, b.apply_round_off !== 0);
           const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
+          const targetFY = b.financial_year || getFinancialYear(b.invoice_date);
+          const invoicePrefix = getInvoicePrefix(targetFY);
 
           await env.DB.batch([
             env.DB.prepare(`
               INSERT INTO invoices (
-                id, status, financial_year, seller_gstin, seller_state_code,
+                id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
                 buyer_name, buyer_trade_name, buyer_address, buyer_city,
                 buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
                 is_interstate, place_of_supply,
                 subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                 cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                 apply_round_off, round_off_paise, total_invoice_amount_paise
-              ) VALUES (?, 'Draft', '2026-27', '27AGCPB8322L1ZG', '27', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
               invoiceId,
+              targetFY,
+              invoicePrefix,
+              env.SELLER_GSTIN,
+              env.SELLER_STATE_CODE,
               b.buyer_name || null,
               b.buyer_trade_name || null,
               b.buyer_address || null,
@@ -845,6 +1533,30 @@ export default {
           return errorResponse(`Invoice is already ${invoice.status}. Only Draft invoices can be issued.`);
         }
 
+        // 6. GST AND HSN SAFETY: Never issue an invoice with missing GST classification or HSN
+        const invItems = await env.DB.prepare(
+          'SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY line_number ASC'
+        ).bind(invId).all<DBInvoiceItem>();
+
+        if (!invItems.results || invItems.results.length === 0) {
+          return errorResponse('Invoice must contain at least one line item before issuance.', 422);
+        }
+
+        for (const it of invItems.results) {
+          if (it.gst_rate_bps === null || it.gst_rate_bps === undefined) {
+            return errorResponse(
+              `Invoice item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) GST rate. Administrator must specify a confirmed GST rate before invoice issuance.`,
+              422
+            );
+          }
+          if (!it.hsn_code || it.hsn_code.trim().length < 4) {
+            return errorResponse(
+              `Invoice item ${it.line_number} ("${it.item_description}") has unconfirmed (NULL) HSN code. Administrator must specify a verified 4-to-8 digit HSN code before invoice issuance.`,
+              422
+            );
+          }
+        }
+
         // Validate buyer GSTIN if present (optional for B2C, but must match Luhn Mod-36 if provided)
         if (invoice.buyer_gstin) {
           if (!validateGSTINChecksum(invoice.buyer_gstin)) {
@@ -855,8 +1567,16 @@ export default {
           }
         }
 
-        // Determine contiguous sequence number
-        const fy = invoice.financial_year || '2026-27';
+        // Derive or validate financial year from stored record or invoice date (never fall back to a hardcoded string)
+        const fy = invoice.financial_year || getFinancialYear(invoice.invoice_date);
+        const expectedPrefix = getInvoicePrefix(fy);
+
+        if (invoice.invoice_prefix !== expectedPrefix || invoice.financial_year !== fy) {
+          await env.DB.prepare(
+            "UPDATE invoices SET financial_year = ?, invoice_prefix = ?, updated_at = datetime('now') WHERE id = ?"
+          ).bind(fy, expectedPrefix, invId).run();
+        }
+
         const maxSeqRow = await env.DB.prepare(
           'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoice_sequence_log WHERE financial_year = ?'
         )
@@ -932,3 +1652,14 @@ export default {
     }
   },
 };
+
+export {
+  checkAdminAuth,
+  createSignedToken,
+  verifySignedToken,
+  timingSafeEqual,
+  jsonResponse,
+  errorResponse,
+};
+
+export default worker;

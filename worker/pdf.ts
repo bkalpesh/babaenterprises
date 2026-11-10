@@ -3,8 +3,8 @@
 // Renders clean, high-precision A4 printable tax documents
 // ==============================================================================
 
-import { BusinessSettings, DBInvoice, DBInvoiceItem } from './types';
-import { formatPaiseToINR } from './financials';
+import type { BusinessSettings, DBInvoice, DBInvoiceItem } from './types.ts';
+import { formatPaiseToINR } from './financials.ts';
 
 function numberToWords(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -292,8 +292,8 @@ export function generateInvoiceHTML(
         <td class="terms-col">
           <div class="bold" style="color: #102F59; margin-bottom: 2px;">Terms & Conditions:</div>
           <div>1. Goods once sold will not be accepted back or exchanged without prior authorization.</div>
-          <div>2. Payment terms: ${settings.default_payment_terms}.</div>
-          <div>3. ${settings.default_invoice_notes}</div>
+          ${settings.default_payment_terms ? `<div>2. Payment terms: ${settings.default_payment_terms}.</div>` : ''}
+          ${settings.default_invoice_notes ? `<div>3. ${settings.default_invoice_notes}</div>` : ''}
           <div style="margin-top: 4px; font-style: italic;">This is a computer generated tax invoice.</div>
         </td>
         <td class="sign-col">
