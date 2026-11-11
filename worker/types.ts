@@ -169,6 +169,7 @@ export interface DBInvoice {
   apply_round_off: number;
   round_off_paise: number;
   total_invoice_amount_paise: number;
+  customer_id?: string | null;
   payment_status: 'Unpaid' | 'Partially_Paid' | 'Paid';
   payment_mode: string | null;
   payment_reference: string | null;
@@ -178,6 +179,27 @@ export interface DBInvoice {
   cancelled_by: string | null;
   pdf_r2_key: string | null;
   pdf_generated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DBCustomer {
+  id: string;
+  legal_name: string;
+  trade_name: string | null;
+  gstin: string | null;
+  gst_registration_type: 'Regular' | 'Composition' | 'Unregistered' | 'Consumer' | 'Overseas';
+  billing_address: string;
+  city: string;
+  state: string;
+  state_code: string;
+  pincode: string;
+  country: string;
+  contact_person: string;
+  mobile: string;
+  email: string | null;
+  notes: string | null;
+  is_active: number;
   created_at: string;
   updated_at: string;
 }
@@ -224,6 +246,7 @@ export interface DBQuotation {
   buyer_phone: string | null;
   buyer_email: string | null;
   place_of_supply: string | null;
+  customer_id?: string | null;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   converted_invoice_id: string | null;
   client_approval_evidence: string | null;

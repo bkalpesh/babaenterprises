@@ -4,7 +4,7 @@
 // Guarantees: Local fallback NEVER claims server synchronization success
 // ==============================================================================
 
-import type { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../types/index.ts';
+import type { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product, Customer } from '../types/index.ts';
 import { StorageService } from './storageService.ts';
 
 const API_BASE = '/api';
@@ -12,6 +12,54 @@ const API_BASE = '/api';
 function getAuthHeader(): Record<string, string> {
   const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('baba_admin_token') : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function mapDBCustomer(c: any): Customer {
+  const legalName = c.legal_name || c.legalName || '';
+  const tradeName = c.trade_name || c.tradeName || null;
+  const gstin = c.gstin || null;
+  const billingAddress = c.billing_address || c.billingAddress || '';
+  const city = c.city || '';
+  const state = c.state || '';
+  const stateCode = c.state_code || c.stateCode || '';
+  const pincode = c.pincode || '';
+  const country = c.country || 'India';
+  const contactPerson = c.contact_person || c.contactPerson || '';
+  const mobile = c.mobile || '';
+  const email = c.email || null;
+  const notes = c.notes || null;
+  const isActive = c.is_active === 1 || c.is_active === true || c.isActive === true || c.is_active === undefined;
+  const regType = c.gst_registration_type || c.gstRegistrationType || (gstin ? 'Regular' : 'Unregistered');
+  const pan = c.pan || (gstin && gstin.length >= 12 ? gstin.substring(2, 12) : null);
+
+  return {
+    id: c.id,
+    legalName,
+    tradeName,
+    gstin,
+    pan,
+    gstRegistrationType: regType,
+    billingAddress,
+    city,
+    state,
+    stateCode,
+    pincode,
+    country,
+    contactPerson,
+    mobile,
+    email,
+    notes,
+    isActive,
+    legal_name: legalName,
+    trade_name: tradeName,
+    gst_registration_type: regType,
+    billing_address: billingAddress,
+    state_code: stateCode,
+    contact_person: contactPerson,
+    is_active: isActive,
+    createdAt: c.created_at || c.createdAt,
+    updatedAt: c.updated_at || c.updatedAt,
+  };
 }
 
 export interface EnquirySubmissionResult {
@@ -30,6 +78,7 @@ export interface StagingInvoice {
   invoice_date: string | null;
   financial_year: string;
   seller_gstin: string;
+  customer_id?: string | null;
   buyer_name: string | null;
   buyer_trade_name: string | null;
   buyer_address: string | null;
@@ -61,12 +110,16 @@ export interface StagingQuotation {
   quotation_number: string;
   quotation_date: string;
   valid_until: string;
+  customer_id?: string | null;
   buyer_name: string;
   buyer_company: string | null;
   buyer_gstin: string | null;
   buyer_state_code: string;
   buyer_state_name: string;
   buyer_address: string | null;
+  buyer_pincode?: string | null;
+  buyer_phone?: string | null;
+  buyer_email?: string | null;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   converted_invoice_id: string | null;
   taxable_amount_paise: number;
@@ -217,6 +270,94 @@ export const ApiService = {
       isOffline: true,
       message: 'Network connection was unavailable. Your enquiry is saved locally on this device. Please call our sales desk directly at 9028260011 / 8788266934 for immediate priority quotation.',
     };
+  },
+
+  // ----------------------------------------------------------------------------
+  // Customers Master (Billing Directory)
+  // ----------------------------------------------------------------------------
+  async getCustomers(query?: string, activeOnly?: boolean): Promise<Customer[]> {
+    try {
+      const params = new URLSearchParams();
+      if (query && query.trim()) params.set('q', query.trim());
+      if (activeOnly) params.set('active', '1');
+      const url = `${API_BASE}/customers${params.toString() ? '?' + params.toString() : ''}`;
+      const res = await fetch(url, { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (data.success && Array.isArray(data.customers)) {
+          return data.customers.map(mapDBCustomer);
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+    return [];
+  },
+
+  async getCustomer(id: string): Promise<Customer | null> {
+    try {
+      const res = await fetch(`${API_BASE}/customers/${id}`, { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (data.success && data.customer) {
+          return mapDBCustomer(data.customer);
+        }
+      }
+    } catch {}
+    return null;
+  },
+
+  async createCustomer(payload: any): Promise<{ success: boolean; customer?: Customer; error?: string }> {
+    const res = await fetch(`${API_BASE}/customers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as any;
+    if (data.success && data.customer) {
+      return { success: true, customer: mapDBCustomer(data.customer) };
+    }
+    return { success: false, error: data.error || 'Failed to create customer' };
+  },
+
+  async updateCustomer(id: string, payload: any): Promise<{ success: boolean; customer?: Customer; error?: string }> {
+    const res = await fetch(`${API_BASE}/customers/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as any;
+    if (data.success && data.customer) {
+      return { success: true, customer: mapDBCustomer(data.customer) };
+    }
+    return { success: false, error: data.error || 'Failed to update customer' };
+  },
+
+  async deleteCustomer(id: string): Promise<{ success: boolean; message?: string; deactivated?: boolean; error?: string }> {
+    const res = await fetch(`${API_BASE}/customers/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeader(),
+    });
+    const data = (await res.json()) as any;
+    return data;
+  },
+
+  async toggleCustomerActive(id: string): Promise<{ success: boolean; customer?: Customer; error?: string }> {
+    const res = await fetch(`${API_BASE}/customers/${id}/toggle-active`, {
+      method: 'PATCH',
+      headers: getAuthHeader(),
+    });
+    const data = (await res.json()) as any;
+    if (data.success && data.customer) {
+      return { success: true, customer: mapDBCustomer(data.customer) };
+    }
+    return { success: false, error: data.error || 'Failed to toggle customer status' };
   },
 
   // ----------------------------------------------------------------------------
