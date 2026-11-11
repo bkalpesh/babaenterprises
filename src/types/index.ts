@@ -66,3 +66,35 @@ export interface BusinessContactInfo {
   gstin: string;
   operatingHours: string;
 }
+
+export interface Customer {
+  id: string;
+  legalName: string;
+  tradeName?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  gstRegistrationType: 'Regular' | 'Composition' | 'Unregistered' | 'Consumer' | 'Overseas' | 'Registered';
+  billingAddress: string;
+  city: string;
+  state: string;
+  stateCode: string;
+  pincode: string;
+  country: string;
+  contactPerson: string;
+  mobile: string;
+  email?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+
+  // Aliases for DB / component compatibility
+  legal_name?: string;
+  trade_name?: string | null;
+  gst_registration_type?: any;
+  billing_address?: string;
+  state_code?: string;
+  contact_person?: string;
+  is_active?: boolean;
+}
+

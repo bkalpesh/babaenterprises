@@ -15,6 +15,7 @@ import type {
   DBQuotationItem,
   DBQuotationDispatch,
   ExecutionContext,
+  DBCustomer,
 } from './types.ts';
 import {
   computeLineItem,
@@ -541,7 +542,225 @@ export const worker = {
       }
 
       // ------------------------------------------------------------------------
-      // 7. QUOTATIONS ENGINE (Configurable Prefix)
+      // 6.5 CUSTOMER MASTER ENGINE (Billing Directory, Statutory Validation, Soft-Delete)
+      // ------------------------------------------------------------------------
+      if (url.pathname === '/api/customers' && method === 'GET') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const q = url.searchParams.get('q')?.trim().toLowerCase();
+        const activeFilter = url.searchParams.get('active');
+
+        let sql = 'SELECT * FROM customers';
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (activeFilter === '1') {
+          conditions.push('is_active = 1');
+        } else if (activeFilter === '0') {
+          conditions.push('is_active = 0');
+        }
+
+        if (q) {
+          conditions.push('(lower(legal_name) LIKE ? OR lower(coalesce(trade_name, "")) LIKE ? OR lower(coalesce(gstin, "")) LIKE ? OR lower(mobile) LIKE ? OR lower(contact_person) LIKE ? OR lower(city) LIKE ?)');
+          const term = `%${q}%`;
+          params.push(term, term, term, term, term, term);
+        }
+
+        if (conditions.length > 0) {
+          sql += ' WHERE ' + conditions.join(' AND ');
+        }
+        sql += ' ORDER BY legal_name ASC';
+
+        try {
+          const stmt = env.DB.prepare(sql);
+          const res = params.length > 0 ? await stmt.bind(...params).all<DBCustomer>() : await stmt.all<DBCustomer>();
+          return jsonResponse({ success: true, customers: res.results || [] });
+        } catch (err: any) {
+          if (err?.message?.includes('no such table: customers')) {
+            return jsonResponse({ success: true, customers: [], warning: 'Customer master table pending migration 0003.' });
+          }
+          throw err;
+        }
+      }
+
+      if (url.pathname.match(/^\/api\/customers\/[^/]+$/) && method === 'GET') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const custId = url.pathname.split('/')[3];
+        const cust = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        if (!cust) return errorResponse('Customer not found.', 404);
+        return jsonResponse({ success: true, customer: cust });
+      }
+
+      if (url.pathname === '/api/customers' && method === 'POST') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const b = (await request.json()) as any;
+
+        const legalName = b.legal_name?.trim() || b.legalName?.trim();
+        if (!legalName || legalName.length < 2) {
+          return errorResponse('Legal business name is required (minimum 2 characters).', 422);
+        }
+
+        const billingAddress = b.billing_address?.trim() || b.billingAddress?.trim() || null;
+        const city = b.city?.trim() || null;
+
+        const rawStateCode = (b.state_code?.trim() || b.stateCode?.trim() || '');
+        if (!rawStateCode || rawStateCode.length !== 2 || !/^[0-9]{2}$/.test(rawStateCode)) {
+          return errorResponse('Valid 2-digit State Code is required.', 422);
+        }
+        const stateCode = rawStateCode;
+        const state = b.state?.trim() || null;
+
+        const pincode = b.pincode?.trim() || null;
+        if (pincode && !/^[1-9][0-9]{5}$/.test(pincode)) {
+          return errorResponse('Valid 6-digit PIN code is required.', 422);
+        }
+
+        const contactPerson = b.contact_person?.trim() || b.contactPerson?.trim() || null;
+        const mobile = b.mobile?.trim() || null;
+        if (mobile && !/^[0-9]{10,12}$/.test(mobile.replace(/[-+ ]/g, ''))) {
+          return errorResponse('Valid 10-to-12 digit mobile number is required.', 422);
+        }
+
+        const gstinRaw = b.gstin?.trim() ? b.gstin.trim().toUpperCase() : null;
+        let regType = b.gst_registration_type || b.gstRegistrationType || (gstinRaw ? 'Regular' : 'Unregistered');
+        const allowedTypes = ['Regular', 'Composition', 'Unregistered', 'Consumer', 'Overseas'];
+        if (!allowedTypes.includes(regType)) {
+          regType = gstinRaw ? 'Regular' : 'Unregistered';
+        }
+
+        if (gstinRaw) {
+          if (!validateGSTINChecksum(gstinRaw)) {
+            return errorResponse('Invalid GSTIN format or checksum per statutory specifications.', 422);
+          }
+          if (!validateGSTINStateMatch(gstinRaw, stateCode)) {
+            return errorResponse(`GSTIN state prefix (${gstinRaw.slice(0, 2)}) does not match state code (${stateCode}).`, 422);
+          }
+          // Prevent duplicate GSTIN
+          const duplicate = await env.DB.prepare('SELECT id, legal_name FROM customers WHERE gstin = ?').bind(gstinRaw).first<{ id: string; legal_name: string }>();
+          if (duplicate) {
+            return errorResponse(`Customer with GSTIN ${gstinRaw} already exists (${duplicate.legal_name}).`, 409);
+          }
+        }
+
+        const custId = 'cust-' + crypto.randomUUID().slice(0, 8);
+        const tradeName = b.trade_name?.trim() || b.tradeName?.trim() || null;
+        const country = b.country?.trim() || 'India';
+        const email = b.email?.trim() || null;
+        const notes = b.notes?.trim() || null;
+
+        await env.DB.prepare(`
+          INSERT INTO customers (
+            id, legal_name, trade_name, gstin, gst_registration_type,
+            billing_address, city, state, state_code, pincode, country,
+            contact_person, mobile, email, notes, is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `).bind(
+          custId, legalName, tradeName, gstinRaw, regType,
+          billingAddress, city, state, stateCode, pincode, country,
+          contactPerson, mobile, email, notes
+        ).run();
+
+        const created = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        return jsonResponse({ success: true, customer: created }, 201);
+      }
+
+      if (url.pathname.match(/^\/api\/customers\/[^/]+$/) && method === 'PUT') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const custId = url.pathname.split('/')[3];
+        const existing = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        if (!existing) return errorResponse('Customer not found.', 404);
+
+        const b = (await request.json()) as any;
+        const legalName = b.legal_name?.trim() || b.legalName?.trim() || existing.legal_name;
+        const billingAddress = b.billing_address?.trim() || b.billingAddress?.trim() || existing.billing_address;
+        const city = b.city?.trim() || existing.city;
+        const state = b.state?.trim() || existing.state;
+        const stateCode = b.state_code?.trim() || b.stateCode?.trim() || existing.state_code;
+        const pincode = b.pincode?.trim() || existing.pincode;
+        const contactPerson = b.contact_person?.trim() || b.contactPerson?.trim() || existing.contact_person;
+        const mobile = b.mobile?.trim() || existing.mobile;
+        const tradeName = b.trade_name !== undefined ? (b.trade_name?.trim() || null) : (b.tradeName !== undefined ? (b.tradeName?.trim() || null) : existing.trade_name);
+        const country = b.country?.trim() || existing.country || 'India';
+        const email = b.email !== undefined ? (b.email?.trim() || null) : existing.email;
+        const notes = b.notes !== undefined ? (b.notes?.trim() || null) : existing.notes;
+        const regType = b.gst_registration_type || b.gstRegistrationType || existing.gst_registration_type;
+
+        let gstinRaw = b.gstin !== undefined ? (b.gstin?.trim() ? b.gstin.trim().toUpperCase() : null) : existing.gstin;
+
+        if (gstinRaw) {
+          if (!validateGSTINChecksum(gstinRaw)) {
+            return errorResponse('Invalid GSTIN format or checksum per statutory specifications.', 422);
+          }
+          if (!validateGSTINStateMatch(gstinRaw, stateCode)) {
+            return errorResponse(`GSTIN state prefix (${gstinRaw.slice(0, 2)}) does not match state code (${stateCode}).`, 422);
+          }
+          const duplicate = await env.DB.prepare('SELECT id, legal_name FROM customers WHERE gstin = ? AND id != ?').bind(gstinRaw, custId).first<{ id: string; legal_name: string }>();
+          if (duplicate) {
+            return errorResponse(`Another customer with GSTIN ${gstinRaw} already exists (${duplicate.legal_name}).`, 409);
+          }
+        }
+
+        await env.DB.prepare(`
+          UPDATE customers SET
+            legal_name = ?, trade_name = ?, gstin = ?, gst_registration_type = ?,
+            billing_address = ?, city = ?, state = ?, state_code = ?, pincode = ?, country = ?,
+            contact_person = ?, mobile = ?, email = ?, notes = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(
+          legalName, tradeName, gstinRaw, regType,
+          billingAddress, city, state, stateCode, pincode, country,
+          contactPerson, mobile, email, notes, custId
+        ).run();
+
+        const updated = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        return jsonResponse({ success: true, customer: updated });
+      }
+
+      if (url.pathname.match(/^\/api\/customers\/[^/]+$/) && method === 'DELETE') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const custId = url.pathname.split('/')[3];
+        const existing = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        if (!existing) return errorResponse('Customer not found.', 404);
+
+        // Check if customer is associated with financial documents (quotations or invoices)
+        let quoteCount = 0;
+        let invCount = 0;
+        try {
+          const qRow = await env.DB.prepare('SELECT count(*) as c FROM quotations WHERE customer_id = ?').bind(custId).first<{ c: number }>();
+          quoteCount = qRow?.c || 0;
+        } catch {}
+        try {
+          const iRow = await env.DB.prepare('SELECT count(*) as c FROM invoices WHERE customer_id = ?').bind(custId).first<{ c: number }>();
+          invCount = iRow?.c || 0;
+        } catch {}
+
+        if (quoteCount > 0 || invCount > 0) {
+          // Soft delete (deactivation) to preserve historical financial document integrity
+          await env.DB.prepare("UPDATE customers SET is_active = 0, updated_at = datetime('now') WHERE id = ?").bind(custId).run();
+          return jsonResponse({
+            success: true,
+            deactivated: true,
+            message: `Customer is associated with ${quoteCount} quotation(s) and ${invCount} invoice(s). Record has been safely deactivated rather than permanently deleted.`
+          });
+        }
+
+        await env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(custId).run();
+        return jsonResponse({ success: true, message: 'Customer record deleted successfully.' });
+      }
+
+      if (url.pathname.match(/^\/api\/customers\/[^/]+\/toggle-active$/) && method === 'PATCH') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const custId = url.pathname.split('/')[3];
+        const existing = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        if (!existing) return errorResponse('Customer not found.', 404);
+
+        const newStatus = existing.is_active === 1 ? 0 : 1;
+        await env.DB.prepare("UPDATE customers SET is_active = ?, updated_at = datetime('now') WHERE id = ?").bind(newStatus, custId).run();
+        const updated = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
+        return jsonResponse({ success: true, customer: updated });
+      }
+
+      // ------------------------------------------------------------------------
+      // 7. QUOTATIONS ENGINE (Configurable Prefix, Customer Linkage, Resilient Allocation)
       // ------------------------------------------------------------------------
       if (url.pathname === '/api/quotations') {
         if (method === 'GET') {
@@ -552,7 +771,14 @@ export const worker = {
         if (method === 'POST') {
           if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
           const b = (await request.json()) as any;
-          const isInterstate = b.buyer_state_code && b.buyer_state_code !== '27';
+
+          // Determine inter-state status dynamically from state codes or GSTIN prefix
+          const sellerStateCode = env.SELLER_STATE_CODE?.trim() || '27';
+          const buyerStateCode = b.buyer_state_code
+            ? String(b.buyer_state_code).trim()
+            : (b.buyer_gstin && String(b.buyer_gstin).trim().length >= 2 ? String(b.buyer_gstin).trim().substring(0, 2) : sellerStateCode);
+          const buyerStateName = b.buyer_state_name ? String(b.buyer_state_name).trim() : (b.buyerStateName ? String(b.buyerStateName).trim() : null);
+          const isInterstate = buyerStateCode !== sellerStateCode;
 
           // Compute items
           const rawItems = b.items || [];
@@ -581,94 +807,229 @@ export const worker = {
           const quotationDate = b.quotation_date || todayStr;
           const fy = b.financial_year || getFinancialYear(quotationDate);
           const prefix = getQuotationPrefix(fy);
-          const maxSeqRow = await env.DB.prepare(
-            'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM quotation_sequence_log WHERE financial_year = ?'
-          )
-            .bind(fy)
-            .first<{ maxSeq: number }>();
-          const nextSeq = (maxSeqRow?.maxSeq || 0) + 1;
+
+          // Resilient sequence allocation: query quotation_sequence_log, with graceful fallback if table not yet migrated
+          let nextSeq = 1;
+          let hasSeqLogTable = true;
+          try {
+            const maxSeqRow = await env.DB.prepare(
+              'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM quotation_sequence_log WHERE financial_year = ?'
+            )
+              .bind(fy)
+              .first<{ maxSeq: number }>();
+            nextSeq = (maxSeqRow?.maxSeq || 0) + 1;
+          } catch (err: any) {
+            if (err?.message?.includes('no such table: quotation_sequence_log')) {
+              hasSeqLogTable = false;
+              const fallbackRow = await env.DB.prepare(
+                'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM quotations WHERE financial_year = ?'
+              )
+                .bind(fy)
+                .first<{ maxSeq: number }>();
+              nextSeq = (fallbackRow?.maxSeq || 0) + 1;
+            } else {
+              throw err;
+            }
+          }
+
           const quoteNumber = `${prefix}${String(nextSeq).padStart(4, '0')}`;
           const validUntilDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          const customerId = b.customer_id || b.customerId || null;
 
-          await env.DB.batch([
-            env.DB.prepare(`
-              INSERT INTO quotations (
-                id, quotation_number, quotation_prefix, sequence_number, financial_year,
-                quotation_date, valid_until, buyer_name, buyer_company,
-                buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
-                status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
-                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
-                round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              quoteId,
-              quoteNumber,
-              prefix,
-              nextSeq,
-              fy,
-              quotationDate,
-              b.valid_until || validUntilDate,
-              b.buyer_name,
-              b.buyer_company || null,
-              b.buyer_gstin || null,
-              b.buyer_state_code || '27',
-              b.buyer_state_name || 'Maharashtra',
-              b.buyer_address || null,
-              b.buyer_phone || null,
-              b.buyer_email || null,
-              totals.subtotalGrossPaise,
-              totals.totalDiscountPaise,
-              totals.taxableAmountPaise,
-              totals.cgstAmountPaise,
-              totals.sgstAmountPaise,
-              totals.igstAmountPaise,
-              totals.totalTaxPaise,
-              totals.roundOffPaise,
-              totals.totalInvoiceAmountPaise,
-              b.payment_terms || null,
-              b.delivery_terms || null,
-              b.notes || null
-            ),
-            env.DB.prepare(`
-              INSERT INTO quotation_sequence_log (financial_year, sequence_number, quotation_id)
-              VALUES (?, ?, ?)
-            `).bind(fy, nextSeq, quoteId),
-            ...computedItems.map((it: any, idx: number) =>
+          // Build batch operations with optional customer_id and sequence log
+          const batchOps: any[] = [];
+
+          // Try insert with customer_id column (Migration 0003)
+          let inserted = false;
+          try {
+            const stmts = [
               env.DB.prepare(`
-              INSERT INTO quotation_items (
-                id, quotation_id, line_number, product_id, item_description, hsn_code,
-                quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
-                discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
-                cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
-                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-                'qti-' + crypto.randomUUID().slice(0, 8),
+                INSERT INTO quotations (
+                  id, quotation_number, quotation_prefix, sequence_number, financial_year,
+                  quotation_date, valid_until, buyer_name, buyer_company,
+                  buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
+                  status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                  cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                  round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes,
+                  is_interstate, customer_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
                 quoteId,
-                idx + 1,
-                it.productId,
-                it.itemDescription,
-                it.hsnCode,
-                it.quantityMicrounits,
-                it.unitOfMeasure,
-                it.unitPricePaise,
-                it.grossAmountPaise,
-                it.discountBps,
-                it.discountAmountPaise,
-                it.taxableAmountPaise,
-                it.gstRateBps,
-                it.cgstRateBps,
-                it.sgstRateBps,
-                it.igstRateBps,
-                it.cgstAmountPaise,
-                it.sgstAmountPaise,
-                it.igstAmountPaise,
-                it.totalAmountPaise
-              )
-            ),
-          ]);
+                quoteNumber,
+                prefix,
+                nextSeq,
+                fy,
+                quotationDate,
+                b.valid_until || validUntilDate,
+                b.buyer_name,
+                b.buyer_company || null,
+                b.buyer_gstin || null,
+                buyerStateCode,
+                buyerStateName,
+                b.buyer_address || null,
+                b.buyer_phone || null,
+                b.buyer_email || null,
+                totals.subtotalGrossPaise,
+                totals.totalDiscountPaise,
+                totals.taxableAmountPaise,
+                totals.cgstAmountPaise,
+                totals.sgstAmountPaise,
+                totals.igstAmountPaise,
+                totals.totalTaxPaise,
+                totals.roundOffPaise,
+                totals.totalInvoiceAmountPaise,
+                b.payment_terms || null,
+                b.delivery_terms || null,
+                b.notes || null,
+                isInterstate ? 1 : 0,
+                customerId
+              ),
+            ];
 
-          const created = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first();
+            computedItems.forEach((it: any, idx: number) => {
+              stmts.push(
+                env.DB.prepare(`
+                  INSERT INTO quotation_items (
+                    id, quotation_id, line_number, product_id, item_description, hsn_code,
+                    quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                    discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                    cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                    cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
+                  'qti-' + crypto.randomUUID().slice(0, 8),
+                  quoteId,
+                  idx + 1,
+                  it.productId,
+                  it.itemDescription,
+                  it.hsnCode,
+                  it.quantityMicrounits,
+                  it.unitOfMeasure,
+                  it.unitPricePaise,
+                  it.grossAmountPaise,
+                  it.discountBps,
+                  it.discountAmountPaise,
+                  it.taxableAmountPaise,
+                  it.gstRateBps,
+                  it.cgstRateBps,
+                  it.sgstRateBps,
+                  it.igstRateBps,
+                  it.cgstAmountPaise,
+                  it.sgstAmountPaise,
+                  it.igstAmountPaise,
+                  it.totalAmountPaise
+                )
+              );
+            });
+
+            if (hasSeqLogTable) {
+              stmts.push(
+                env.DB.prepare(`
+                  INSERT INTO quotation_sequence_log (financial_year, sequence_number, quotation_id)
+                  VALUES (?, ?, ?)
+                `).bind(fy, nextSeq, quoteId)
+              );
+            }
+
+            await env.DB.batch(stmts);
+          } catch (err: any) {
+            // Backward-compatibility fallback if customer_id column not yet added to quotations
+            const errStr = String(err?.message || err);
+            if (errStr.includes('customer_id')) {
+              const legacyStmts = [
+                env.DB.prepare(`
+                  INSERT INTO quotations (
+                    id, quotation_number, quotation_prefix, sequence_number, financial_year,
+                    quotation_date, valid_until, buyer_name, buyer_company,
+                    buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
+                    status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                    cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                    round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
+                  quoteId,
+                  quoteNumber,
+                  prefix,
+                  nextSeq,
+                  fy,
+                  quotationDate,
+                  b.valid_until || validUntilDate,
+                  b.buyer_name,
+                  b.buyer_company || null,
+                  b.buyer_gstin || null,
+                  buyerStateCode,
+                  buyerStateName,
+                  b.buyer_address || null,
+                  b.buyer_phone || null,
+                  b.buyer_email || null,
+                  totals.subtotalGrossPaise,
+                  totals.totalDiscountPaise,
+                  totals.taxableAmountPaise,
+                  totals.cgstAmountPaise,
+                  totals.sgstAmountPaise,
+                  totals.igstAmountPaise,
+                  totals.totalTaxPaise,
+                  totals.roundOffPaise,
+                  totals.totalInvoiceAmountPaise,
+                  b.payment_terms || null,
+                  b.delivery_terms || null,
+                  b.notes || null
+                ),
+              ];
+
+              if (hasSeqLogTable) {
+                legacyStmts.push(
+                  env.DB.prepare(`
+                    INSERT INTO quotation_sequence_log (financial_year, sequence_number, quotation_id)
+                    VALUES (?, ?, ?)
+                  `).bind(fy, nextSeq, quoteId)
+                );
+              }
+
+              computedItems.forEach((it: any, idx: number) => {
+                legacyStmts.push(
+                  env.DB.prepare(`
+                    INSERT INTO quotation_items (
+                      id, quotation_id, line_number, product_id, item_description, hsn_code,
+                      quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                      discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                      cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  `).bind(
+                    'qti-' + crypto.randomUUID().slice(0, 8),
+                    quoteId,
+                    idx + 1,
+                    it.productId,
+                    it.itemDescription,
+                    it.hsnCode,
+                    it.quantityMicrounits,
+                    it.unitOfMeasure,
+                    it.unitPricePaise,
+                    it.grossAmountPaise,
+                    it.discountBps,
+                    it.discountAmountPaise,
+                    it.taxableAmountPaise,
+                    it.gstRateBps,
+                    it.cgstRateBps,
+                    it.sgstRateBps,
+                    it.igstRateBps,
+                    it.cgstAmountPaise,
+                    it.sgstAmountPaise,
+                    it.igstAmountPaise,
+                    it.totalAmountPaise
+                  )
+                );
+              });
+
+              await env.DB.batch(legacyStmts);
+              inserted = true;
+            } else {
+              throw err;
+            }
+          }
+
+          const created = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
           return jsonResponse({ success: true, quotation: created }, 201);
         }
       }
@@ -1321,81 +1682,166 @@ export const worker = {
         const targetFY = quote.financial_year || getFinancialYear(quote.quotation_date);
         const invoicePrefix = getInvoicePrefix(targetFY);
 
+        const customerId = (quote as any).customer_id || null;
+
         // ATOMIC D1 BATCH: Insert invoice with exact quotation amounts, update quotation, and insert line items
-        await env.DB.batch([
-          env.DB.prepare(`
-            INSERT INTO invoices (
-              id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-              buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
-              buyer_gstin, is_interstate, place_of_supply, reference_quotation_id,
-              subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
-              cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
-              apply_round_off, round_off_paise, total_invoice_amount_paise
-            ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(
-            invoiceId,
-            targetFY,
-            invoicePrefix,
-            env.SELLER_GSTIN,
-            env.SELLER_STATE_CODE,
-            quote.buyer_name,
-            quote.buyer_company,
-            quote.buyer_address,
-            quote.buyer_state_name,
-            quote.buyer_state_code,
-            quote.buyer_pincode || null,
-            quote.buyer_gstin,
-            isInterstate,
-            quote.buyer_state_name + ' (' + quote.buyer_state_code + ')',
-            quote.id,
-            quote.subtotal_gross_paise,
-            quote.total_discount_paise,
-            quote.taxable_amount_paise,
-            quote.cgst_amount_paise,
-            quote.sgst_amount_paise,
-            quote.igst_amount_paise,
-            quote.total_tax_paise,
-            quote.apply_round_off,
-            quote.round_off_paise,
-            quote.total_amount_paise
-          ),
-          env.DB.prepare(`
-            UPDATE quotations SET status = 'Converted', converted_invoice_id = ?, updated_at = datetime('now') WHERE id = ?
-          `).bind(invoiceId, quote.id),
-          ...qItems.results.map((it: DBQuotationItem) =>
+        try {
+          await env.DB.batch([
             env.DB.prepare(`
-            INSERT INTO invoice_items (
-              id, invoice_id, line_number, product_id, item_description, hsn_code,
-              quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
-              discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
-              cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
-              cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(
-              'ivi-' + crypto.randomUUID().slice(0, 8),
+              INSERT INTO invoices (
+                id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+                buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
+                buyer_gstin, is_interstate, place_of_supply, reference_quotation_id, customer_id,
+                subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                apply_round_off, round_off_paise, total_invoice_amount_paise
+              ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
               invoiceId,
-              it.line_number,
-              it.product_id,
-              it.item_description,
-              it.hsn_code,
-              it.quantity_microunits,
-              it.unit_of_measure,
-              it.unit_price_paise,
-              it.gross_amount_paise,
-              it.discount_bps,
-              it.discount_amount_paise,
-              it.taxable_amount_paise,
-              it.gst_rate_bps,
-              it.cgst_rate_bps,
-              it.sgst_rate_bps,
-              it.igst_rate_bps,
-              it.cgst_amount_paise,
-              it.sgst_amount_paise,
-              it.igst_amount_paise,
-              it.total_amount_paise
-            )
-          ),
-        ]);
+              targetFY,
+              invoicePrefix,
+              env.SELLER_GSTIN,
+              env.SELLER_STATE_CODE,
+              quote.buyer_name,
+              quote.buyer_company,
+              quote.buyer_address,
+              quote.buyer_state_name,
+              quote.buyer_state_code,
+              quote.buyer_pincode || null,
+              quote.buyer_gstin,
+              isInterstate,
+              quote.buyer_state_name + ' (' + quote.buyer_state_code + ')',
+              quote.id,
+              customerId,
+              quote.subtotal_gross_paise,
+              quote.total_discount_paise,
+              quote.taxable_amount_paise,
+              quote.cgst_amount_paise,
+              quote.sgst_amount_paise,
+              quote.igst_amount_paise,
+              quote.total_tax_paise,
+              quote.apply_round_off,
+              quote.round_off_paise,
+              quote.total_amount_paise
+            ),
+            env.DB.prepare(`
+              UPDATE quotations SET status = 'Converted', converted_invoice_id = ?, updated_at = datetime('now') WHERE id = ?
+            `).bind(invoiceId, quote.id),
+            ...qItems.results.map((it: DBQuotationItem) =>
+              env.DB.prepare(`
+              INSERT INTO invoice_items (
+                id, invoice_id, line_number, product_id, item_description, hsn_code,
+                quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+                'ivi-' + crypto.randomUUID().slice(0, 8),
+                invoiceId,
+                it.line_number,
+                it.product_id,
+                it.item_description,
+                it.hsn_code,
+                it.quantity_microunits,
+                it.unit_of_measure,
+                it.unit_price_paise,
+                it.gross_amount_paise,
+                it.discount_bps,
+                it.discount_amount_paise,
+                it.taxable_amount_paise,
+                it.gst_rate_bps,
+                it.cgst_rate_bps,
+                it.sgst_rate_bps,
+                it.igst_rate_bps,
+                it.cgst_amount_paise,
+                it.sgst_amount_paise,
+                it.igst_amount_paise,
+                it.total_amount_paise
+              )
+            ),
+          ]);
+        } catch (err: any) {
+          const errStr = String(err?.message || err);
+          if (errStr.includes('customer_id')) {
+            await env.DB.batch([
+              env.DB.prepare(`
+                INSERT INTO invoices (
+                  id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+                  buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
+                  buyer_gstin, is_interstate, place_of_supply, reference_quotation_id,
+                  subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                  cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                  apply_round_off, round_off_paise, total_invoice_amount_paise
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
+                invoiceId,
+                targetFY,
+                invoicePrefix,
+                env.SELLER_GSTIN,
+                env.SELLER_STATE_CODE,
+                quote.buyer_name,
+                quote.buyer_company,
+                quote.buyer_address,
+                quote.buyer_state_name,
+                quote.buyer_state_code,
+                quote.buyer_pincode || null,
+                quote.buyer_gstin,
+                isInterstate,
+                quote.buyer_state_name + ' (' + quote.buyer_state_code + ')',
+                quote.id,
+                quote.subtotal_gross_paise,
+                quote.total_discount_paise,
+                quote.taxable_amount_paise,
+                quote.cgst_amount_paise,
+                quote.sgst_amount_paise,
+                quote.igst_amount_paise,
+                quote.total_tax_paise,
+                quote.apply_round_off,
+                quote.round_off_paise,
+                quote.total_amount_paise
+              ),
+              env.DB.prepare(`
+                UPDATE quotations SET status = 'Converted', converted_invoice_id = ?, updated_at = datetime('now') WHERE id = ?
+              `).bind(invoiceId, quote.id),
+              ...qItems.results.map((it: DBQuotationItem) =>
+                env.DB.prepare(`
+                INSERT INTO invoice_items (
+                  id, invoice_id, line_number, product_id, item_description, hsn_code,
+                  quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                  discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                  cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                  cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
+                  'ivi-' + crypto.randomUUID().slice(0, 8),
+                  invoiceId,
+                  it.line_number,
+                  it.product_id,
+                  it.item_description,
+                  it.hsn_code,
+                  it.quantity_microunits,
+                  it.unit_of_measure,
+                  it.unit_price_paise,
+                  it.gross_amount_paise,
+                  it.discount_bps,
+                  it.discount_amount_paise,
+                  it.taxable_amount_paise,
+                  it.gst_rate_bps,
+                  it.cgst_rate_bps,
+                  it.sgst_rate_bps,
+                  it.igst_rate_bps,
+                  it.cgst_amount_paise,
+                  it.sgst_amount_paise,
+                  it.igst_amount_paise,
+                  it.total_amount_paise
+                )
+              ),
+            ]);
+          } else {
+            throw err;
+          }
+        }
 
         const createdInvoice = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invoiceId).first();
         return jsonResponse({ success: true, invoice: createdInvoice }, 201);
@@ -1413,7 +1859,9 @@ export const worker = {
         if (method === 'POST') {
           if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
           const b = (await request.json()) as any;
-          const isInterstate = b.is_interstate ?? (b.buyer_state_code && b.buyer_state_code !== '27' ? 1 : 0);
+          const sellerStateCode = env.SELLER_STATE_CODE?.trim() || '27';
+          const buyerStateCode = b.buyer_state_code ? String(b.buyer_state_code).trim() : (b.buyer_gstin && String(b.buyer_gstin).trim().length >= 2 ? String(b.buyer_gstin).trim().substring(0, 2) : sellerStateCode);
+          const isInterstate = b.is_interstate ?? (buyerStateCode !== sellerStateCode ? 1 : 0);
 
           const rawItems = b.items || [];
           if (rawItems.length === 0) return errorResponse('At least one item is required.');
@@ -1446,79 +1894,163 @@ export const worker = {
           const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
           const targetFY = b.financial_year || getFinancialYear(b.invoice_date);
           const invoicePrefix = getInvoicePrefix(targetFY);
+          const customerId = b.customer_id || null;
+          const buyerStateName = b.buyer_state_name || null;
+          const placeOfSupply = b.place_of_supply || (buyerStateName && buyerStateCode ? `${buyerStateName} (${buyerStateCode})` : (buyerStateName || null));
 
-          await env.DB.batch([
-            env.DB.prepare(`
-              INSERT INTO invoices (
-                id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-                buyer_name, buyer_trade_name, buyer_address, buyer_city,
-                buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
-                is_interstate, place_of_supply,
-                subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
-                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
-                apply_round_off, round_off_paise, total_invoice_amount_paise
-              ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              invoiceId,
-              targetFY,
-              invoicePrefix,
-              env.SELLER_GSTIN,
-              env.SELLER_STATE_CODE,
-              b.buyer_name || null,
-              b.buyer_trade_name || null,
-              b.buyer_address || null,
-              b.buyer_city || null,
-              b.buyer_state_name || 'Maharashtra',
-              b.buyer_state_code || '27',
-              b.buyer_pincode || null,
-              b.buyer_gstin || null,
-              isInterstate,
-              b.place_of_supply || (b.buyer_state_name ? b.buyer_state_name + ' (' + (b.buyer_state_code || '27') + ')' : null),
-              totals.subtotalGrossPaise,
-              totals.totalDiscountPaise,
-              totals.taxableAmountPaise,
-              totals.cgstAmountPaise,
-              totals.sgstAmountPaise,
-              totals.igstAmountPaise,
-              totals.totalTaxPaise,
-              totals.applyRoundOff ? 1 : 0,
-              totals.roundOffPaise,
-              totals.totalInvoiceAmountPaise
-            ),
-            ...computedItems.map((it: any, idx: number) =>
+          try {
+            await env.DB.batch([
               env.DB.prepare(`
-              INSERT INTO invoice_items (
-                id, invoice_id, line_number, product_id, item_description, hsn_code,
-                quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
-                discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
-                cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
-                cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-                'ivi-' + crypto.randomUUID().slice(0, 8),
+                INSERT INTO invoices (
+                  id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+                  buyer_name, buyer_trade_name, buyer_address, buyer_city,
+                  buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
+                  is_interstate, place_of_supply, customer_id,
+                  subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                  cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                  apply_round_off, round_off_paise, total_invoice_amount_paise
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
                 invoiceId,
-                idx + 1,
-                it.productId,
-                it.itemDescription,
-                it.hsnCode,
-                it.quantityMicrounits,
-                it.unitOfMeasure,
-                it.unitPricePaise,
-                it.grossAmountPaise,
-                it.discountBps,
-                it.discountAmountPaise,
-                it.taxableAmountPaise,
-                it.gstRateBps,
-                it.cgstRateBps,
-                it.sgstRateBps,
-                it.igstRateBps,
-                it.cgstAmountPaise,
-                it.sgstAmountPaise,
-                it.igstAmountPaise,
-                it.totalAmountPaise
-              )
-            ),
-          ]);
+                targetFY,
+                invoicePrefix,
+                env.SELLER_GSTIN,
+                env.SELLER_STATE_CODE,
+                b.buyer_name || null,
+                b.buyer_trade_name || null,
+                b.buyer_address || null,
+                b.buyer_city || null,
+                buyerStateName,
+                buyerStateCode,
+                b.buyer_pincode || null,
+                b.buyer_gstin || null,
+                isInterstate ? 1 : 0,
+                placeOfSupply,
+                customerId,
+                totals.subtotalGrossPaise,
+                totals.totalDiscountPaise,
+                totals.taxableAmountPaise,
+                totals.cgstAmountPaise,
+                totals.sgstAmountPaise,
+                totals.igstAmountPaise,
+                totals.totalTaxPaise,
+                totals.applyRoundOff ? 1 : 0,
+                totals.roundOffPaise,
+                totals.totalInvoiceAmountPaise
+              ),
+              ...computedItems.map((it: any, idx: number) =>
+                env.DB.prepare(`
+                INSERT INTO invoice_items (
+                  id, invoice_id, line_number, product_id, item_description, hsn_code,
+                  quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                  discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                  cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                  cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
+                  'ivi-' + crypto.randomUUID().slice(0, 8),
+                  invoiceId,
+                  idx + 1,
+                  it.productId,
+                  it.itemDescription,
+                  it.hsnCode,
+                  it.quantityMicrounits,
+                  it.unitOfMeasure,
+                  it.unitPricePaise,
+                  it.grossAmountPaise,
+                  it.discountBps,
+                  it.discountAmountPaise,
+                  it.taxableAmountPaise,
+                  it.gstRateBps,
+                  it.cgstRateBps,
+                  it.sgstRateBps,
+                  it.igstRateBps,
+                  it.cgstAmountPaise,
+                  it.sgstAmountPaise,
+                  it.igstAmountPaise,
+                  it.totalAmountPaise
+                )
+              ),
+            ]);
+          } catch (colErr: any) {
+            if (String(colErr).includes('customer_id')) {
+              // Backward compatible fallback if customer_id migration has not yet executed on D1
+              await env.DB.batch([
+                env.DB.prepare(`
+                  INSERT INTO invoices (
+                    id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+                    buyer_name, buyer_trade_name, buyer_address, buyer_city,
+                    buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
+                    is_interstate, place_of_supply,
+                    subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+                    cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+                    apply_round_off, round_off_paise, total_invoice_amount_paise
+                  ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
+                  invoiceId,
+                  targetFY,
+                  invoicePrefix,
+                  env.SELLER_GSTIN,
+                  env.SELLER_STATE_CODE,
+                  b.buyer_name || null,
+                  b.buyer_trade_name || null,
+                  b.buyer_address || null,
+                  b.buyer_city || null,
+                  buyerStateName,
+                  buyerStateCode,
+                  b.buyer_pincode || null,
+                  b.buyer_gstin || null,
+                  isInterstate ? 1 : 0,
+                  placeOfSupply,
+                  totals.subtotalGrossPaise,
+                  totals.totalDiscountPaise,
+                  totals.taxableAmountPaise,
+                  totals.cgstAmountPaise,
+                  totals.sgstAmountPaise,
+                  totals.igstAmountPaise,
+                  totals.totalTaxPaise,
+                  totals.applyRoundOff ? 1 : 0,
+                  totals.roundOffPaise,
+                  totals.totalInvoiceAmountPaise
+                ),
+                ...computedItems.map((it: any, idx: number) =>
+                  env.DB.prepare(`
+                  INSERT INTO invoice_items (
+                    id, invoice_id, line_number, product_id, item_description, hsn_code,
+                    quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+                    discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+                    cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+                    cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
+                    'ivi-' + crypto.randomUUID().slice(0, 8),
+                    invoiceId,
+                    idx + 1,
+                    it.productId,
+                    it.itemDescription,
+                    it.hsnCode,
+                    it.quantityMicrounits,
+                    it.unitOfMeasure,
+                    it.unitPricePaise,
+                    it.grossAmountPaise,
+                    it.discountBps,
+                    it.discountAmountPaise,
+                    it.taxableAmountPaise,
+                    it.gstRateBps,
+                    it.cgstRateBps,
+                    it.sgstRateBps,
+                    it.igstRateBps,
+                    it.cgstAmountPaise,
+                    it.sgstAmountPaise,
+                    it.igstAmountPaise,
+                    it.totalAmountPaise
+                  )
+                ),
+              ]);
+            } else {
+              throw colErr;
+            }
+          }
 
           const created = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invoiceId).first();
           return jsonResponse({ success: true, invoice: created }, 201);
@@ -1579,20 +2111,43 @@ export const worker = {
           ).bind(fy, expectedPrefix, invId).run();
         }
 
-        const maxSeqRow = await env.DB.prepare(
-          'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoice_sequence_log WHERE financial_year = ?'
-        )
-          .bind(fy)
-          .first<{ maxSeq: number }>();
-        const nextSequence = (maxSeqRow?.maxSeq || 0) + 1;
+        let nextSequence: number;
+        try {
+          const maxSeqRow = await env.DB.prepare(
+            'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoice_sequence_log WHERE financial_year = ?'
+          )
+            .bind(fy)
+            .first<{ maxSeq: number }>();
+          nextSequence = (maxSeqRow?.maxSeq || 0) + 1;
 
-        // Inserting into invoice_sequence_log triggers trg_execute_invoice_issuance_on_sequence_reservation
-        // which asserts buyer details, line items, non-NULL GST rates, and financial balancing,
-        // and updates invoice status to 'Issued' with official number BE/26-27/XXXX.
-        await env.DB.prepare(`
-          INSERT INTO invoice_sequence_log (financial_year, sequence_number, invoice_id, allocated_by)
-          VALUES (?, ?, ?, 'ADMIN_STAGING')
-        `).bind(fy, nextSequence, invId).run();
+          // Inserting into invoice_sequence_log triggers trg_execute_invoice_issuance_on_sequence_reservation
+          // which asserts buyer details, line items, non-NULL GST rates, and financial balancing,
+          // and updates invoice status to 'Issued' with official number BE/YY-YY/XXXX.
+          await env.DB.prepare(`
+            INSERT INTO invoice_sequence_log (financial_year, sequence_number, invoice_id, allocated_by)
+            VALUES (?, ?, ?, 'ADMIN_STAGING')
+          `).bind(fy, nextSequence, invId).run();
+        } catch (seqErr: any) {
+          if (String(seqErr).includes('no such table: invoice_sequence_log')) {
+            // Resilient fallback if staging D1 sequence log table not yet applied
+            const maxSeqRow = await env.DB.prepare(
+              'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoices WHERE financial_year = ? AND sequence_number IS NOT NULL'
+            ).bind(fy).first<{ maxSeq: number }>();
+            nextSequence = (maxSeqRow?.maxSeq || 0) + 1;
+            const fullInvNumber = `${expectedPrefix}${String(nextSequence).padStart(4, '0')}`;
+            await env.DB.prepare(`
+              UPDATE invoices SET
+                status = 'Issued',
+                sequence_number = ?,
+                invoice_number = ?,
+                issued_at = datetime('now'),
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(nextSequence, fullInvNumber, invId).run();
+          } else {
+            throw seqErr;
+          }
+        }
 
         const issued = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first<DBInvoice>();
         return jsonResponse({ success: true, invoice: issued });

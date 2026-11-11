@@ -26,10 +26,14 @@ import {
   Printer,
   ExternalLink,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import { BusinessContactInfo, BusinessEnquiry, CustomerReference, Product } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { ApiService, StagingInvoice, StagingQuotation } from '../../services/apiService';
+import { CustomerManagement } from './CustomerManagement';
+import { QuotationCreateModal } from './QuotationCreateModal';
+import { InvoiceCreateModal } from './InvoiceCreateModal';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -49,8 +53,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Active Tab: 'enquiries' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'
-  const [activeTab, setActiveTab] = useState<'enquiries' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'>('enquiries');
+  // Active Tab: 'enquiries' | 'customers' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'
+  const [activeTab, setActiveTab] = useState<'enquiries' | 'customers' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'>('enquiries');
+
+  // Modals state
+  const [isQuotationModalOpen, setIsQuotationModalOpen] = useState(false);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   // Enquiries state
   const [enquiries, setEnquiries] = useState<BusinessEnquiry[]>([]);
@@ -369,6 +377,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
 
               <button
+                onClick={() => setActiveTab('customers')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                  activeTab === 'customers'
+                    ? 'border-[#0755A5] text-[#0755A5]'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Customers</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('quotations')}
                 className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
                   activeTab === 'quotations'
@@ -680,6 +700,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
+            {/* TAB: CUSTOMERS */}
+            {activeTab === 'customers' && (
+              <div className="flex-1 p-6 overflow-y-auto">
+                <CustomerManagement />
+              </div>
+            )}
+
             {/* TAB: QUOTATIONS */}
             {activeTab === 'quotations' && (
               <div className="flex-1 p-6 overflow-y-auto">
@@ -689,54 +716,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Industrial Quotations Desk
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Issue formal price offers with sequence prefix BE/QT/26-27/ and convert accepted quotes into GST tax invoices.
+                      Issue formal price offers with dynamic financial year prefixes and convert accepted quotes into GST tax invoices.
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={async () => {
-                        const buyerName = window.prompt('Enter Buyer / Company Name:');
-                        if (!buyerName) return;
-                        const buyerGstin = window.prompt('Enter Buyer GSTIN (Optional, leave blank if B2C):') || undefined;
-                        const itemDesc = window.prompt('Enter Component Description (e.g. Precision Rubber Washers NBR 70):') || 'Custom Rubber Component';
-                        const hsnInput = window.prompt('Enter 4-to-8 digit HSN Code (Required before dispatch, e.g. 40169990):', '4016') || '';
-                        const gstRateInput = window.prompt('Enter Confirmed GST Rate % (e.g. 0, 5, 12, 18, 28):', '18') || '';
-                        const qty = Number(window.prompt('Enter Quantity (Nos):', '1000') || 1000);
-                        const rate = Number(window.prompt('Enter Unit Rate in Rupees (e.g. 15.50):', '15.00') || 15);
-
-                        const hsnCode = hsnInput.trim().length >= 4 ? hsnInput.trim() : null;
-                        const parsedGstBps = gstRateInput.trim() !== '' ? Math.round(Number(gstRateInput.trim()) * 100) : null;
-                        
-                        try {
-                          const res = await ApiService.createQuotation({
-                            buyer_name: buyerName.trim(),
-                            buyer_gstin: buyerGstin?.trim(),
-                            buyer_state_code: '27',
-                            buyer_state_name: 'Maharashtra',
-                            items: [
-                              {
-                                itemDescription: itemDesc,
-                                hsnCode: hsnCode,
-                                quantityMicrounits: qty * 1_000_000,
-                                unitPricePaise: Math.round(rate * 100),
-                                gstRateBps: parsedGstBps,
-                              }
-                            ]
-                          });
-                          if (res.success) {
-                            alert(`Quotation ${res.quotation.quotation_number} created successfully! (Ensure GST rate & HSN are confirmed prior to dispatch)`);
-                            loadAllData();
-                          } else {
-                            alert(`Error: ${res.error}`);
-                          }
-                        } catch (err: any) {
-                          alert(`Failed: ${err.message}`);
-                        }
-                      }}
-                      className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                      onClick={() => setIsQuotationModalOpen(true)}
+                      className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>Create Quotation</span>
+                      <span>New Quotation</span>
                     </button>
                   </div>
                 </div>
@@ -828,50 +817,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </p>
                   </div>
                   <button
-                    onClick={async () => {
-                      const buyerName = window.prompt('Enter Buyer Legal Name:');
-                      if (!buyerName) return;
-                      const buyerAddr = window.prompt('Enter Buyer Factory / Office Address:', 'MIDC Industrial Area, Pune') || 'Bhosari MIDC';
-                      const buyerGstin = window.prompt('Enter Buyer GSTIN (e.g. 27AAACB2026R1Z9 or leave empty for B2C):') || undefined;
-                      const itemDesc = window.prompt('Enter Item Description:', 'High-Performance Rubber Bushes Shore 65A') || 'Precision Rubber Components';
-                      const hsnInput = window.prompt('Enter 4-to-8 digit HSN Code (Required before issuance, e.g. 40169990):', '4016') || '';
-                      const gstRateInput = window.prompt('Enter Confirmed GST Rate % (e.g. 0, 5, 12, 18, 28):', '18') || '';
-                      const qty = Number(window.prompt('Enter Quantity (Units):', '500') || 500);
-                      const rate = Number(window.prompt('Enter Unit Price in Rupees:', '32.00') || 32);
-
-                      const hsnCode = hsnInput.trim().length >= 4 ? hsnInput.trim() : null;
-                      const parsedGstBps = gstRateInput.trim() !== '' ? Math.round(Number(gstRateInput.trim()) * 100) : null;
-                      
-                      try {
-                        const res = await ApiService.createInvoice({
-                          buyer_name: buyerName.trim(),
-                          buyer_address: buyerAddr.trim(),
-                          buyer_city: 'Pune',
-                          buyer_state_name: 'Maharashtra',
-                          buyer_state_code: '27',
-                          buyer_pincode: '411026',
-                          buyer_gstin: buyerGstin?.trim(),
-                          items: [
-                            {
-                              itemDescription: itemDesc,
-                              hsnCode: hsnCode,
-                              quantityMicrounits: qty * 1_000_000,
-                              unitPricePaise: Math.round(rate * 100),
-                              gstRateBps: parsedGstBps,
-                            }
-                          ]
-                        });
-                        if (res.success) {
-                          alert('Draft Invoice created! Verify all line items have confirmed GST rates and HSN codes prior to final issuance.');
-                          loadAllData();
-                        } else {
-                          alert(`Error: ${res.error}`);
-                        }
-                      } catch (err: any) {
-                        alert(`Failed: ${err.message}`);
-                      }
-                    }}
-                    className="px-4 py-2 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                    onClick={() => setIsInvoiceModalOpen(true)}
+                    className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Draft Invoice</span>
@@ -1310,6 +1257,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {/* Quotation Creation Modal */}
+        {isQuotationModalOpen && (
+          <QuotationCreateModal
+            isOpen={isQuotationModalOpen}
+            onClose={() => setIsQuotationModalOpen(false)}
+            onSuccess={() => {
+              loadAllData();
+              setIsQuotationModalOpen(false);
+            }}
+            availableProducts={products}
+          />
+        )}
+
+        {/* Invoice Creation Modal */}
+        {isInvoiceModalOpen && (
+          <InvoiceCreateModal
+            isOpen={isInvoiceModalOpen}
+            onClose={() => setIsInvoiceModalOpen(false)}
+            onSuccess={() => {
+              loadAllData();
+              setIsInvoiceModalOpen(false);
+            }}
+            availableProducts={products}
+          />
         )}
       </div>
     </div>

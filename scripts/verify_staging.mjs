@@ -42,6 +42,7 @@ console.log('===================================================================
 
 const schemaSql = readFileSync(resolve(__dirname, '../migrations/0001_initial_schema.sql'), 'utf-8');
 const seedSql = readFileSync(resolve(__dirname, '../migrations/0002_seed_data.sql'), 'utf-8');
+const customerSql = readFileSync(resolve(__dirname, '../migrations/0003_customer_master.sql'), 'utf-8');
 
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
@@ -58,9 +59,18 @@ try {
 // Apply Migration 0002 Seed
 try {
   db.exec(seedSql);
-  console.log('✓ Migration 0002_seed_data.sql applied (12 products, 5 references, business settings)\n');
+  console.log('✓ Migration 0002_seed_data.sql applied (12 products, 5 references, business settings)');
 } catch (err) {
   console.error('✗ Migration 0002 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0003 Customer Master
+try {
+  db.exec(customerSql);
+  console.log('✓ Migration 0003_customer_master.sql applied (customers table, sequence tables, customer_id columns)\n');
+} catch (err) {
+  console.error('✗ Migration 0003 failed to load:', err);
   process.exit(1);
 }
 
@@ -2848,6 +2858,500 @@ assertTest('TC-86', 'Prefix Transitions', 'POSITIVE', 'Application explicitly su
         updated_at = datetime('now')
     WHERE id = 1;
   `);
+});
+
+// ==============================================================================
+// CUSTOMER MASTER & WORKFLOW INTEGRITY TESTS (TC-87 to TC-97)
+// ==============================================================================
+
+assertTest('TC-87', 'Customer Schema', 'POSITIVE', 'Migration 0003 creates customers table, sequence logs, and customer_id columns', () => {
+  // Check customers table exists and has expected columns
+  const custCols = db.prepare("PRAGMA table_info('customers')").all().map(c => c.name);
+  if (!custCols.includes('id') || !custCols.includes('legal_name') || !custCols.includes('gstin') || !custCols.includes('state_code')) {
+    throw new Error(`customers table missing required columns: ${custCols.join(', ')}`);
+  }
+
+  // Check quotation_sequence_log exists
+  const qSeqCols = db.prepare("PRAGMA table_info('quotation_sequence_log')").all().map(c => c.name);
+  if (!qSeqCols.includes('sequence_number') || !qSeqCols.includes('financial_year')) {
+    throw new Error('quotation_sequence_log table missing expected columns');
+  }
+
+  // Check customer_id column in quotations and invoices
+  const quoteCols = db.prepare("PRAGMA table_info('quotations')").all().map(c => c.name);
+  if (!quoteCols.includes('customer_id')) {
+    throw new Error('quotations table missing customer_id column');
+  }
+  const invCols = db.prepare("PRAGMA table_info('invoices')").all().map(c => c.name);
+  if (!invCols.includes('customer_id')) {
+    throw new Error('invoices table missing customer_id column');
+  }
+});
+
+await assertTest('TC-88', 'Customer Master', 'POSITIVE', 'POST /api/customers creates registered customer with valid Mod-36 GSTIN', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Valid GSTIN: 27AAACC1140A1ZL (Maharashtra state code 27, valid Mod-36 check char L)
+  const req = new Request('https://staging.babaenterprises.internal/api/customers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      legal_name: 'Cummins India Limited',
+      trade_name: 'Cummins Technical Center India',
+      gstin: '27AAACC1140A1ZL',
+      gst_registration_type: 'Registered',
+      billing_address: 'Kothrud Industrial Area',
+      city: 'Pune',
+      state: 'Maharashtra',
+      state_code: '27',
+      pincode: '411038',
+      contact_person: 'Mr. Arvind Shinde',
+      mobile: '9822001122'
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 201) {
+    const errBody = await res.json();
+    throw new Error(`Expected HTTP 201, got ${res.status}: ${JSON.stringify(errBody)}`);
+  }
+  const body = await res.json();
+  if (!body.success || !body.customer?.id || body.customer.legal_name !== 'Cummins India Limited') {
+    throw new Error('Customer creation response missing expected customer data');
+  }
+});
+
+await assertTest('TC-89', 'GSTIN Validation', 'NEGATIVE', 'POST /api/customers rejects invalid Mod-36 GSTIN checksum with HTTP 422', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Tampered GSTIN checksum (ending with 9 instead of correct check char L)
+  const req = new Request('https://staging.babaenterprises.internal/api/customers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      legal_name: 'Invalid Checksum Ltd',
+      gstin: '27AAACC1140A1Z9', // Invalid checksum
+      gst_registration_type: 'Registered',
+      state_code: '27'
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 422) {
+    throw new Error(`Expected HTTP 422 for invalid GSTIN checksum, got ${res.status}`);
+  }
+});
+
+await assertTest('TC-90', 'GSTIN State Match', 'NEGATIVE', 'POST /api/customers rejects GSTIN state prefix mismatch with HTTP 422', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Valid Gujarat GSTIN (24) submitted with Maharashtra state code (27)
+  const req = new Request('https://staging.babaenterprises.internal/api/customers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      legal_name: 'State Mismatch Ltd',
+      gstin: '24AAACL0140P1ZP', // 24 = Gujarat
+      gst_registration_type: 'Registered',
+      state_code: '27' // 27 = Maharashtra (Mismatch!)
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 422) {
+    throw new Error(`Expected HTTP 422 for GSTIN state mismatch, got ${res.status}`);
+  }
+});
+
+await assertTest('TC-91', 'Duplicate Prevention', 'NEGATIVE', 'POST /api/customers rejects duplicate GSTIN with HTTP 409 Conflict', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Insert original customer explicitly first
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, gstin, state_code, is_active)
+    VALUES ('cust-dup-test', 'Original Company Ltd', '27AAACC1140A1ZL', '27', 1);
+  `);
+
+  const req = new Request('https://staging.babaenterprises.internal/api/customers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      legal_name: 'Duplicate Company Ltd',
+      gstin: '27AAACC1140A1ZL',
+      gst_registration_type: 'Regular',
+      state_code: '27'
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 409) {
+    throw new Error(`Expected HTTP 409 for duplicate GSTIN, got ${res.status}`);
+  }
+});
+
+await assertTest('TC-92', 'Unregistered Customer', 'POSITIVE', 'POST /api/customers allows unregistered / B2C buyer without GSTIN', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  const req = new Request('https://staging.babaenterprises.internal/api/customers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      legal_name: 'Omkar Precision Tools (Unregistered)',
+      gst_registration_type: 'Unregistered',
+      state_code: '27',
+      city: 'Pune',
+      billing_address: 'Bhosari MIDC'
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 201) {
+    throw new Error(`Expected HTTP 201 for unregistered customer, got ${res.status}`);
+  }
+  const body = await res.json();
+  if (body.customer?.gstin !== null && body.customer?.gstin !== undefined) {
+    throw new Error('Unregistered customer should have NULL gstin');
+  }
+});
+
+await assertTest('TC-93', 'Customer Audit Deactivation', 'POSITIVE', 'DELETE /api/customers/:id safely deactivates customer with linked documents instead of deleting', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Insert test customer cust-bf-01 explicitly
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, state_code, is_active)
+    VALUES ('cust-bf-01', 'Precision Forge Test', '27', 1);
+    INSERT INTO invoices (
+      id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+      buyer_name, buyer_state_code, is_interstate, customer_id,
+      subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      apply_round_off, round_off_paise, total_invoice_amount_paise
+    ) VALUES (
+      'inv-cust-audit-test', 'Draft', '2026-27', 'BE/26-27/', '27AGCPB8322L1ZG', '27',
+      'Precision Forge Test', '27', 0, 'cust-bf-01',
+      100000, 0, 100000, 9000, 9000, 0, 18000, 0, 0, 118000
+    );
+  `);
+
+  const req = new Request('https://staging.babaenterprises.internal/api/customers/cust-bf-01', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 200) {
+    throw new Error(`Expected HTTP 200, got ${res.status}`);
+  }
+  const body = await res.json();
+  if (body.action !== 'deactivated' && !body.deactivated) {
+    throw new Error(`Expected deactivated flag true, got ${JSON.stringify(body)}`);
+  }
+
+  // Verify in DB that record still exists but is_active = 0
+  const custInDb = db.prepare('SELECT id, is_active FROM customers WHERE id = ?').get('cust-bf-01');
+  if (!custInDb || custInDb.is_active !== 0) {
+    throw new Error('Customer was not safely deactivated (is_active != 0) or was erroneously deleted');
+  }
+});
+
+await assertTest('TC-94', 'Quotation Customer ID', 'POSITIVE', 'POST /api/quotations accepts and persists customer_id', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, state_code, is_active)
+    VALUES ('cust-tm-02', 'Tata Motors CVBU Test', '27', 1);
+  `);
+
+  const req = new Request('https://staging.babaenterprises.internal/api/quotations', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      customer_id: 'cust-tm-02',
+      buyer_name: 'Tata Motors CVBU',
+      buyer_company: 'Tata Motors Limited',
+      buyer_address: 'Pimpri Works, Bhosari MIDC, Pune',
+      buyer_state_code: '27',
+      buyer_state_name: 'Maharashtra',
+      buyer_gstin: '27AAACT2727Q1ZW',
+      quotation_date: '2026-11-15',
+      items: [
+        {
+          itemDescription: 'Rubber Engine Mountings Shore 65A',
+          hsnCode: '40169990',
+          quantityMicrounits: 500 * 1_000_000,
+          unitOfMeasure: 'NOS',
+          unitPricePaise: 4500, // Rs 45.00
+          discountBps: 0,
+          gstRateBps: 1800 // 18%
+        }
+      ]
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 201) {
+    const err = await res.json();
+    throw new Error(`Expected HTTP 201, got ${res.status}: ${JSON.stringify(err)}`);
+  }
+  const body = await res.json();
+  if (body.quotation.customer_id !== 'cust-tm-02') {
+    throw new Error(`Expected customer_id 'cust-tm-02', got ${body.quotation.customer_id}`);
+  }
+});
+
+await assertTest('TC-95', 'Conversion Preservation', 'POSITIVE', 'Quotation-to-invoice conversion preserves customer_id on generated invoice', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  // Insert quotation in Draft, insert items, then update to Accepted to comply with item locking triggers
+  const quoteId = 'qt-convert-cust-test';
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, state_code, is_active)
+    VALUES ('cust-tm-02', 'Tata Motors CVBU Test', '27', 1);
+
+    INSERT INTO quotations (
+      id, quotation_number, quotation_prefix, sequence_number, financial_year,
+      quotation_date, valid_until, buyer_name, buyer_company,
+      buyer_gstin, buyer_state_code, buyer_state_name, buyer_address,
+      status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      round_off_paise, total_amount_paise, is_interstate, customer_id
+    ) VALUES (
+      '${quoteId}', 'BE/QT/26-27/0099', 'BE/QT/26-27/', 99, '2026-27',
+      '2026-11-15', '2026-12-15', 'Tata Motors CVBU', 'Tata Motors Limited',
+      '27AAACT2727Q1ZW', '27', 'Maharashtra', 'Pimpri Works, Pune',
+      'Draft', 2250000, 0, 2250000,
+      202500, 202500, 0, 405000,
+      0, 2655000, 0, 'cust-tm-02'
+    );
+    INSERT INTO quotation_items (
+      id, quotation_id, line_number, item_description, hsn_code,
+      quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+      discount_bps, discount_amount_paise, taxable_amount_paise, gst_rate_bps,
+      cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+    ) VALUES (
+      'qti-convert-cust', '${quoteId}', 1, 'Engine Mountings', '40169990',
+      500000000, 'NOS', 4500, 2250000,
+      0, 0, 2250000, 1800,
+      900, 900, 0,
+      202500, 202500, 0, 2655000
+    );
+    INSERT INTO quotation_dispatches (
+      id, quotation_id, idempotency_key, provider_idempotency_key, provider_message_id, dispatch_status, recipient_email, completed_at
+    ) VALUES (
+      'qd-convert-cust-test', '${quoteId}', 'idemp-convert-cust', 'prov-convert-cust', 'msg-convert-cust', 'ACCEPTED', 'procurement@tatamotors.com', datetime('now')
+    );
+    UPDATE quotations SET status = 'Sent', dispatch_id = 'qd-convert-cust-test', sent_to_recipient = 'procurement@tatamotors.com', sent_at = datetime('now') WHERE id = '${quoteId}';
+    UPDATE quotations SET status = 'Accepted', client_approval_evidence = 'PO-2026-TM-9821' WHERE id = '${quoteId}';
+  `);
+
+  const req = new Request(`https://staging.babaenterprises.internal/api/quotations/${quoteId}/convert-to-invoice`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 201) {
+    const err = await res.json();
+    throw new Error(`Expected HTTP 201, got ${res.status}: ${JSON.stringify(err)}`);
+  }
+  const body = await res.json();
+  if (body.invoice?.customer_id !== 'cust-tm-02') {
+    throw new Error(`Converted invoice failed to preserve customer_id: got '${body.invoice?.customer_id}' instead of 'cust-tm-02'`);
+  }
+});
+
+await assertTest('TC-96', 'Invoice Customer ID', 'POSITIVE', 'POST /api/invoices accepts customer_id and dynamically calculates interstate tax', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, state_code, is_active)
+    VALUES ('cust-lt-03', 'L&T Heavy Engineering Test', '24', 1);
+  `);
+
+  // Customer in Gujarat (State Code 24) -> Must dynamically calculate IGST 100% and 0 CGST/SGST
+  const req = new Request('https://staging.babaenterprises.internal/api/invoices', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      customer_id: 'cust-lt-03',
+      buyer_name: 'Larsen & Toubro Heavy Engineering',
+      buyer_state_name: 'Gujarat',
+      buyer_state_code: '24',
+      buyer_gstin: '24AAACL0140P1ZP',
+      invoice_date: '2026-11-20',
+      items: [
+        {
+          itemDescription: 'High-Temp Silicone Gaskets 300mm',
+          hsnCode: '40169990',
+          quantityMicrounits: 200 * 1_000_000,
+          unitOfMeasure: 'NOS',
+          unitPricePaise: 8000, // Rs 80.00
+          discountBps: 0,
+          gstRateBps: 1800 // 18%
+        }
+      ]
+    })
+  });
+
+  const res = await worker.fetch(req, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res.status !== 201) {
+    const err = await res.json();
+    throw new Error(`Expected HTTP 201, got ${res.status}: ${JSON.stringify(err)}`);
+  }
+  const body = await res.json();
+  if (body.invoice?.customer_id !== 'cust-lt-03') {
+    throw new Error(`Expected customer_id 'cust-lt-03', got ${body.invoice?.customer_id}`);
+  }
+  if (body.invoice?.is_interstate !== 1) {
+    throw new Error(`Expected is_interstate = 1 for Gujarat buyer, got ${body.invoice?.is_interstate}`);
+  }
+  if (body.invoice?.igst_amount_paise <= 0 || body.invoice?.cgst_amount_paise !== 0) {
+    throw new Error(`Interstate invoice tax split failed: IGST=${body.invoice?.igst_amount_paise}, CGST=${body.invoice?.cgst_amount_paise}`);
+  }
+});
+
+await assertTest('TC-97', 'Toggle Active', 'POSITIVE', 'PATCH /api/customers/:id/toggle-active toggles is_active flag', async () => {
+  const d1 = createD1Adapter(db);
+  const token = await createSignedToken('TestSecret');
+
+  db.exec(`
+    INSERT OR IGNORE INTO customers (id, legal_name, state_code, is_active)
+    VALUES ('cust-sp-04', 'Precision Works SP', '27', 1);
+  `);
+
+  // cust-sp-04 is active
+  const req1 = new Request('https://staging.babaenterprises.internal/api/customers/cust-sp-04/toggle-active', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const res1 = await worker.fetch(req1, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+
+  if (res1.status !== 200) {
+    throw new Error(`Expected HTTP 200, got ${res1.status}`);
+  }
+  const body1 = await res1.json();
+  if (body1.customer?.is_active !== 0) {
+    throw new Error(`Expected is_active to become 0, got ${body1.customer?.is_active}`);
+  }
+
+  // Toggle back to active
+  const req2 = new Request('https://staging.babaenterprises.internal/api/customers/cust-sp-04/toggle-active', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const res2 = await worker.fetch(req2, {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27'
+  });
+  const body2 = await res2.json();
+  if (body2.customer?.is_active !== 1) {
+    throw new Error(`Expected is_active to return to 1, got ${body2.customer?.is_active}`);
+  }
 });
 
 console.log('\n===============================================================================');
