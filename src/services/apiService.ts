@@ -454,8 +454,59 @@ export const ApiService = {
     return [];
   },
 
+  async getQuotation(id: string): Promise<{ success: boolean; quotation?: StagingQuotation; items?: any[]; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/quotations/${id}`, {
+        headers: getAuthHeader(),
+      });
+      const data = (await res.json()) as any;
+      if (res.ok && data.success) {
+        return { success: true, quotation: data.quotation, items: data.items || [] };
+      }
+      return { success: false, error: data.error || `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error fetching quotation' };
+    }
+  },
+
   async createQuotation(payload: any): Promise<any> {
     const res = await fetch(`${API_BASE}/quotations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as any;
+  },
+
+  async updateQuotation(id: string, payload: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/quotations/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as any;
+  },
+
+  async updateQuotationStatus(id: string, payload: { status: string; approval_evidence?: string; rejection_reason?: string; expiry_reason?: string; reason?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/quotations/${id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as any;
+  },
+
+  async sendQuotation(id: string, payload: { recipient_email: string; recipient_name?: string; custom_message?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/quotations/${id}/send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -494,9 +545,36 @@ export const ApiService = {
     return [];
   },
 
+  async getInvoice(id: string): Promise<{ success: boolean; invoice?: StagingInvoice; items?: any[]; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${id}`, {
+        headers: getAuthHeader(),
+      });
+      const data = (await res.json()) as any;
+      if (res.ok && data.success) {
+        return { success: true, invoice: data.invoice, items: data.items || [] };
+      }
+      return { success: false, error: data.error || `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error fetching invoice' };
+    }
+  },
+
   async createInvoice(payload: any): Promise<any> {
     const res = await fetch(`${API_BASE}/invoices`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as any;
+  },
+
+  async updateInvoice(id: string, payload: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/invoices/${id}`, {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         ...getAuthHeader(),

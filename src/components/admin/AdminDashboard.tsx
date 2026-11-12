@@ -34,6 +34,7 @@ import { ApiService, StagingInvoice, StagingQuotation } from '../../services/api
 import { CustomerManagement } from './CustomerManagement';
 import { QuotationCreateModal } from './QuotationCreateModal';
 import { InvoiceCreateModal } from './InvoiceCreateModal';
+import { QuotationStatusModal } from './QuotationStatusModal';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -59,6 +60,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modals state
   const [isQuotationModalOpen, setIsQuotationModalOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [editingQuotation, setEditingQuotation] = useState<StagingQuotation | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<StagingInvoice | null>(null);
+  const [statusManagingQuotation, setStatusManagingQuotation] = useState<StagingQuotation | null>(null);
 
   // Enquiries state
   const [enquiries, setEnquiries] = useState<BusinessEnquiry[]>([]);
@@ -738,7 +742,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setIsQuotationModalOpen(true)}
+                      onClick={() => {
+                        setEditingQuotation(null);
+                        setIsQuotationModalOpen(true);
+                      }}
                       className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                     >
                       <Plus className="w-4 h-4" />
@@ -790,27 +797,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </span>
                             </td>
                             <td className="p-3 text-center">
-                              {q.status !== 'Converted' ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                {q.status !== 'Converted' && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingQuotation(q);
+                                      setIsQuotationModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
+                                    title="Edit Quotation"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    <span>Edit</span>
+                                  </button>
+                                )}
+
                                 <button
-                                  onClick={async () => {
-                                    if (window.confirm(`Convert Quotation ${q.quotation_number} to a Draft GST Tax Invoice?`)) {
-                                      const res = await ApiService.convertQuotationToInvoice(q.id);
-                                      if (res.success) {
-                                        alert('Quotation converted to Draft Invoice successfully!');
-                                        loadAllData();
-                                        setActiveTab('invoices');
-                                      } else {
-                                        alert(`Error: ${res.error}`);
-                                      }
-                                    }
-                                  }}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded transition-colors"
+                                  onClick={() => setStatusManagingQuotation(q)}
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0755A5] text-[11px] font-semibold rounded transition-colors"
+                                  title="Manage Quotation Status"
                                 >
-                                  Convert to Invoice
+                                  Status
                                 </button>
-                              ) : (
-                                <span className="text-[11px] text-purple-700 font-medium">Invoice Generated</span>
-                              )}
+
+                                {q.status !== 'Converted' ? (
+                                  <button
+                                    onClick={async () => {
+                                      if (window.confirm(`Convert Quotation ${q.quotation_number} to a Draft GST Tax Invoice?`)) {
+                                        const res = await ApiService.convertQuotationToInvoice(q.id);
+                                        if (res.success) {
+                                          alert('Quotation converted to Draft Invoice successfully!');
+                                          loadAllData();
+                                          setActiveTab('invoices');
+                                        } else {
+                                          alert(`Error: ${res.error}`);
+                                        }
+                                      }
+                                    }}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded transition-colors"
+                                  >
+                                    Convert
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-purple-700 font-medium">Converted</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -834,7 +865,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </p>
                   </div>
                   <button
-                    onClick={() => setIsInvoiceModalOpen(true)}
+                    onClick={() => {
+                      setEditingInvoice(null);
+                      setIsInvoiceModalOpen(true);
+                    }}
                     className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
@@ -893,26 +927,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <td className="p-3 text-center">
                               <div className="flex items-center justify-center gap-1.5">
                                 {inv.status === 'Draft' && (
-                                  <button
-                                    onClick={async () => {
-                                      if (window.confirm('Issue this invoice? This will allocate the next official sequential number (BE/26-27/XXXX) and permanently lock financial details.')) {
-                                        try {
-                                          const res = await ApiService.issueInvoice(inv.id);
-                                          if (res.success) {
-                                            alert(`Invoice issued successfully: ${res.invoice.invoice_number}`);
-                                            loadAllData();
-                                          } else {
-                                            alert(`Issuance Error: ${res.error}`);
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingInvoice(inv);
+                                        setIsInvoiceModalOpen(true);
+                                      }}
+                                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
+                                      title="Edit Draft Invoice"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                      <span>Edit</span>
+                                    </button>
+
+                                    <button
+                                      onClick={async () => {
+                                        if (window.confirm('Issue this invoice? This will allocate the next official sequential number (BE/26-27/XXXX) and permanently lock financial details.')) {
+                                          try {
+                                            const res = await ApiService.issueInvoice(inv.id);
+                                            if (res.success) {
+                                              alert(`Invoice issued successfully: ${res.invoice.invoice_number}`);
+                                              loadAllData();
+                                            } else {
+                                              alert(`Issuance Error: ${res.error}`);
+                                            }
+                                          } catch (err: any) {
+                                            alert(`Issuance failed: ${err.message}`);
                                           }
-                                        } catch (err: any) {
-                                          alert(`Issuance failed: ${err.message}`);
                                         }
-                                      }
-                                    }}
-                                    className="px-2.5 py-1 bg-[#102F59] hover:bg-[#0755A5] text-white text-[11px] font-semibold rounded transition-colors"
-                                  >
-                                    Issue Invoice
-                                  </button>
+                                      }}
+                                      className="px-2.5 py-1 bg-[#102F59] hover:bg-[#0755A5] text-white text-[11px] font-semibold rounded transition-colors"
+                                    >
+                                      Issue Invoice
+                                    </button>
+                                  </>
                                 )}
 
                                 {inv.status === 'Issued' && (
@@ -1403,29 +1451,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* Quotation Creation Modal */}
+        {/* Quotation Creation / Edit Modal */}
         {isQuotationModalOpen && (
           <QuotationCreateModal
             isOpen={isQuotationModalOpen}
-            onClose={() => setIsQuotationModalOpen(false)}
+            onClose={() => {
+              setIsQuotationModalOpen(false);
+              setEditingQuotation(null);
+            }}
             onSuccess={() => {
               loadAllData();
               setIsQuotationModalOpen(false);
+              setEditingQuotation(null);
             }}
             availableProducts={products}
+            initialData={editingQuotation}
           />
         )}
 
-        {/* Invoice Creation Modal */}
+        {/* Invoice Creation / Edit Modal */}
         {isInvoiceModalOpen && (
           <InvoiceCreateModal
             isOpen={isInvoiceModalOpen}
-            onClose={() => setIsInvoiceModalOpen(false)}
+            onClose={() => {
+              setIsInvoiceModalOpen(false);
+              setEditingInvoice(null);
+            }}
             onSuccess={() => {
               loadAllData();
               setIsInvoiceModalOpen(false);
+              setEditingInvoice(null);
             }}
             availableProducts={products}
+            initialData={editingInvoice}
+          />
+        )}
+
+        {/* Quotation Status Lifecycle Modal */}
+        {statusManagingQuotation && (
+          <QuotationStatusModal
+            isOpen={!!statusManagingQuotation}
+            onClose={() => setStatusManagingQuotation(null)}
+            onSuccess={() => {
+              loadAllData();
+              setStatusManagingQuotation(null);
+            }}
+            quotation={statusManagingQuotation}
           />
         )}
       </div>

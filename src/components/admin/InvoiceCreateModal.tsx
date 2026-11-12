@@ -34,6 +34,7 @@ interface InvoiceCreateModalProps {
   onClose: () => void;
   onSuccess: (invoice: StagingInvoice) => void;
   availableProducts?: Product[];
+  initialData?: StagingInvoice | null;
 }
 
 export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
@@ -41,6 +42,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
   onClose,
   onSuccess,
   availableProducts = [],
+  initialData = null,
 }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -72,20 +74,72 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadCustomers = async () => {
+  const loadInitialState = async () => {
     try {
       const data = await ApiService.getCustomers();
       setCustomers(data.filter((c) => c.is_active));
     } catch {
       // Offline fallback
     }
+
+    if (initialData) {
+      setSelectedCustomerId(initialData.customer_id || '');
+      setBuyerName(initialData.buyer_name || '');
+      setBuyerTradeName(initialData.buyer_trade_name || '');
+      setBuyerGstin(initialData.buyer_gstin || '');
+      setBuyerAddress(initialData.buyer_address || '');
+      setBuyerCity(initialData.buyer_city || '');
+      setBuyerStateCode(initialData.buyer_state_code || '27');
+      setBuyerPincode(initialData.buyer_pincode || '');
+
+      try {
+        const fullInvoice = await ApiService.getInvoice(initialData.id);
+        if (fullInvoice.success && Array.isArray(fullInvoice.items) && fullInvoice.items.length > 0) {
+          setItems(
+            fullInvoice.items.map((it: any) => ({
+              productId: it.product_id || undefined,
+              itemDescription: it.item_description || it.name || '',
+              hsnCode: it.hsn_code || '',
+              quantity: it.quantity_microunits ? it.quantity_microunits / 1_000_000 : (it.quantity || 1),
+              unitOfMeasure: it.unit_of_measure || 'NOS',
+              rate: it.unit_price_paise ? it.unit_price_paise / 100 : (it.rate || 0),
+              discountPercent: it.discount_bps ? it.discount_bps / 100 : (it.discountPercent || 0),
+              gstRate: it.gst_rate_bps !== null && it.gst_rate_bps !== undefined ? it.gst_rate_bps / 100 : null,
+            }))
+          );
+        }
+      } catch {
+        // Keep default row if fetch fails
+      }
+    } else {
+      // Reset form to clean state for creation
+      setSelectedCustomerId('');
+      setBuyerName('');
+      setBuyerTradeName('');
+      setBuyerGstin('');
+      setBuyerAddress('');
+      setBuyerCity('');
+      setBuyerStateCode('27');
+      setBuyerPincode('');
+      setItems([
+        {
+          itemDescription: '',
+          hsnCode: '',
+          quantity: 100,
+          unitOfMeasure: 'NOS',
+          rate: 0,
+          discountPercent: 0,
+          gstRate: null,
+        },
+      ]);
+    }
   };
 
   useEffect(() => {
     if (isOpen) {
-      loadCustomers();
+      loadInitialState();
     }
-  }, [isOpen]);
+  }, [isOpen, initialData?.id]);
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -264,11 +318,19 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
         })),
       };
 
-      const result = await ApiService.createInvoice(payload);
-      onSuccess(result);
+      const result = initialData
+        ? await ApiService.updateInvoice(initialData.id, payload)
+        : await ApiService.createInvoice(payload);
+
+      if (result && result.success === false) {
+        setError(result.error || 'Failed to save invoice. Please check your inputs.');
+        return;
+      }
+
+      onSuccess(result.invoice || result);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create invoice. Please check your inputs.');
+      setError(err?.message || 'Failed to save invoice. Please check your inputs.');
     } finally {
       setIsSubmitting(false);
     }
@@ -284,7 +346,9 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
               <Receipt className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Create Draft Tax Invoice</h3>
+              <h3 className="text-base font-bold text-white">
+                {initialData ? `Edit Draft Invoice (${initialData.invoice_number || 'Unissued'})` : 'Create Draft Tax Invoice'}
+              </h3>
               <p className="text-xs text-slate-400">
                 Rule 46 compliant draft invoice linked to Customer Master
               </p>
@@ -688,7 +752,9 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
               className="px-5 py-2 text-sm font-semibold text-white bg-[#0755A5] hover:bg-[#064485] rounded-lg transition shadow-sm flex items-center gap-2 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              {isSubmitting ? 'Creating Draft...' : 'Create Draft Invoice'}
+              {isSubmitting
+                ? (initialData ? 'Saving Changes...' : 'Creating Draft...')
+                : (initialData ? 'Save Changes' : 'Create Draft Invoice')}
             </button>
           </div>
         </form>
@@ -699,7 +765,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
           isOpen={isCustomerModalOpen}
           onClose={() => setIsCustomerModalOpen(false)}
           onSuccess={(newCust) => {
-            loadCustomers();
+            loadInitialState();
             handleCustomerSelect(newCust.id);
             setIsCustomerModalOpen(false);
           }}

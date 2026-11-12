@@ -34,6 +34,7 @@ interface QuotationCreateModalProps {
   onClose: () => void;
   onSuccess: (quotation: StagingQuotation) => void;
   availableProducts?: Product[];
+  initialData?: StagingQuotation | null;
 }
 
 export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
@@ -41,6 +42,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
   onClose,
   onSuccess,
   availableProducts = [],
+  initialData = null,
 }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -71,21 +73,72 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load customer master list
-  const loadCustomers = async () => {
+  // Load customer master list and populate initialData if editing
+  const loadInitialState = async () => {
     try {
       const data = await ApiService.getCustomers();
       setCustomers(data.filter((c) => c.is_active));
     } catch {
       // Offline fallback
     }
+
+    if (initialData) {
+      setSelectedCustomerId(initialData.customer_id || '');
+      setBuyerName(initialData.buyer_name || '');
+      setBuyerCompany(initialData.buyer_company || '');
+      setBuyerGstin(initialData.buyer_gstin || '');
+      setBuyerAddress(initialData.buyer_address || '');
+      setBuyerStateCode(initialData.buyer_state_code || '27');
+      setBuyerPincode(initialData.buyer_pincode || '');
+
+      // Load full items from backend
+      try {
+        const fullQuote = await ApiService.getQuotation(initialData.id);
+        if (fullQuote.success && Array.isArray(fullQuote.items) && fullQuote.items.length > 0) {
+          setItems(
+            fullQuote.items.map((it: any) => ({
+              productId: it.product_id || undefined,
+              itemDescription: it.item_description || it.name || '',
+              hsnCode: it.hsn_code || '',
+              quantity: it.quantity_microunits ? it.quantity_microunits / 1_000_000 : (it.quantity || 1),
+              unitOfMeasure: it.unit_of_measure || 'NOS',
+              rate: it.unit_price_paise ? it.unit_price_paise / 100 : (it.rate || 0),
+              discountPercent: it.discount_bps ? it.discount_bps / 100 : (it.discountPercent || 0),
+              gstRate: it.gst_rate_bps !== null && it.gst_rate_bps !== undefined ? it.gst_rate_bps / 100 : null,
+            }))
+          );
+        }
+      } catch {
+        // Keep default row if fetch fails
+      }
+    } else {
+      // Reset form to blank state for creation
+      setSelectedCustomerId('');
+      setBuyerName('');
+      setBuyerCompany('');
+      setBuyerGstin('');
+      setBuyerAddress('');
+      setBuyerStateCode('27');
+      setBuyerPincode('');
+      setItems([
+        {
+          itemDescription: '',
+          hsnCode: '',
+          quantity: 100,
+          unitOfMeasure: 'NOS',
+          rate: 0,
+          discountPercent: 0,
+          gstRate: null,
+        },
+      ]);
+    }
   };
 
   useEffect(() => {
     if (isOpen) {
-      loadCustomers();
+      loadInitialState();
     }
-  }, [isOpen]);
+  }, [isOpen, initialData?.id]);
 
   // When a customer is selected from dropdown, autofill details
   const handleCustomerSelect = (customerId: string) => {
@@ -267,11 +320,19 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
         })),
       };
 
-      const result = await ApiService.createQuotation(payload);
-      onSuccess(result);
+      const result = initialData
+        ? await ApiService.updateQuotation(initialData.id, payload)
+        : await ApiService.createQuotation(payload);
+
+      if (result && result.success === false) {
+        setError(result.error || 'Failed to save quotation. Please check your inputs.');
+        return;
+      }
+
+      onSuccess(result.quotation || result);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create quotation. Please check your inputs.');
+      setError(err?.message || 'Failed to save quotation. Please check your inputs.');
     } finally {
       setIsSubmitting(false);
     }
@@ -287,7 +348,9 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               <FileSpreadsheet className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Create New Quotation</h3>
+              <h3 className="text-base font-bold text-white">
+                {initialData ? `Edit Quotation (${initialData.quotation_number})` : 'Create New Quotation'}
+              </h3>
               <p className="text-xs text-slate-400">
                 Draft quotation with customer master autofill & statutory GST calculation
               </p>
@@ -682,7 +745,9 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               className="px-5 py-2 text-sm font-semibold text-white bg-[#0755A5] hover:bg-[#064485] rounded-lg transition shadow-sm flex items-center gap-2 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              {isSubmitting ? 'Creating Draft...' : 'Create Draft Quotation'}
+              {isSubmitting
+                ? (initialData ? 'Saving Changes...' : 'Creating Draft...')
+                : (initialData ? 'Save Changes' : 'Create Draft Quotation')}
             </button>
           </div>
         </form>
@@ -694,7 +759,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
           isOpen={isCustomerModalOpen}
           onClose={() => setIsCustomerModalOpen(false)}
           onSuccess={(newCust) => {
-            loadCustomers();
+            loadInitialState();
             handleCustomerSelect(newCust.id);
             setIsCustomerModalOpen(false);
           }}
