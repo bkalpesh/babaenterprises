@@ -76,7 +76,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Products state
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [productSaveError, setProductSaveError] = useState<string | null>(null);
 
   // References state
   const [references, setReferences] = useState<CustomerReference[]>([]);
@@ -94,11 +98,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [isOpen, isAuthenticated]);
 
+  const loadProducts = async () => {
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const dbProducts = await ApiService.getProducts();
+      setProducts(dbProducts);
+    } catch (err: any) {
+      setProductsError(err.message || 'Failed to load products from database endpoint.');
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
   const loadAllData = async () => {
     setEnquiries(StorageService.getEnquiries());
-    setProducts(StorageService.getProducts());
     setReferences(StorageService.getReferences());
     setContactInfo(StorageService.getContactInfo());
+    loadProducts();
     try {
       const invList = await ApiService.getInvoices();
       setInvoices(invList);
@@ -962,56 +979,111 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Product Catalogue Master
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Edit component descriptions, update material notes, or toggle catalog display.
+                      Database-backed component directory. Updates persist directly to Cloudflare D1.
                     </p>
                   </div>
+                  <button
+                    onClick={loadProducts}
+                    disabled={productsLoading}
+                    className="px-3 py-1.5 text-xs font-semibold text-[#0755A5] bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200"
+                  >
+                    {productsLoading ? 'Refreshing...' : 'Refresh Catalogue'}
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {products.map((prod) => (
-                    <div
-                      key={prod.id}
-                      className="p-4 bg-white rounded-xl border border-slate-200 flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center gap-3 mb-3">
-                          <img
-                            src={prod.image}
-                            alt={prod.name}
-                            className="w-14 h-14 rounded-lg object-cover bg-slate-100 border border-slate-200"
-                          />
+                {productsError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between">
+                    <span>{productsError}</span>
+                    <button onClick={loadProducts} className="font-bold underline text-red-800">
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {productsLoading ? (
+                  <div className="p-12 text-center text-slate-500 text-xs">
+                    <p className="font-semibold text-slate-700">Loading products from D1 database...</p>
+                  </div>
+                ) : products.length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 text-xs bg-white rounded-xl border border-slate-200">
+                    <p className="font-semibold text-slate-700">No products found in the database.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {products.map((prod) => {
+                      const hsn = prod.hsnCode || prod.hsn_code;
+                      const pricePaise = prod.unitPricePaise !== undefined ? prod.unitPricePaise : prod.unit_price_paise;
+                      const gstBps = prod.gstRateBps !== undefined && prod.gstRateBps !== null ? prod.gstRateBps : prod.gst_rate_bps;
+                      const isActive = prod.isActive ?? prod.is_active ?? true;
+
+                      return (
+                        <div
+                          key={prod.id}
+                          className="p-4 bg-white rounded-xl border border-slate-200 flex flex-col justify-between"
+                        >
                           <div>
-                            <h4 className="font-heading text-sm font-bold text-slate-900">{prod.name}</h4>
-                            <span className="text-[11px] text-[#0755A5] font-medium">{prod.categoryLabel}</span>
+                            <div className="flex items-center gap-3 mb-3">
+                              <img
+                                src={prod.image || prod.image_url}
+                                alt={prod.name}
+                                className="w-14 h-14 rounded-lg object-cover bg-slate-100 border border-slate-200"
+                              />
+                              <div>
+                                <h4 className="font-heading text-sm font-bold text-slate-900">{prod.name}</h4>
+                                <span className="text-[11px] text-[#0755A5] font-medium">{prod.categoryLabel || prod.category_label}</span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-600 line-clamp-2 mb-2">{prod.shortDescription || prod.short_description}</p>
+                            
+                            <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <span>HSN: <strong className="text-slate-800">{hsn || 'Unassigned'}</strong></span>
+                              <span>•</span>
+                              <span>Rate: <strong className="text-slate-800">{pricePaise && pricePaise > 0 ? `₹${(pricePaise / 100).toFixed(2)}` : 'On Request'}</strong></span>
+                              <span>•</span>
+                              <span>GST: <strong className="text-slate-800">{gstBps !== undefined && gstBps !== null ? `${gstBps / 100}%` : 'Unconfirmed'}</strong></span>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span className={isActive ? 'text-emerald-600 font-medium' : 'text-slate-400 font-medium'}>
+                              {isActive ? 'Active in Catalogue' : 'Disabled'}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setProductSaveError(null);
+                                setEditingProduct({ ...prod });
+                              }}
+                              className="text-[#0755A5] hover:underline font-semibold flex items-center gap-1"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
                           </div>
                         </div>
-                        <p className="text-xs text-slate-600 line-clamp-2">{prod.shortDescription}</p>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <span className="text-emerald-600 font-medium">Active in Catalogue</span>
-                        <button
-                          onClick={() => setEditingProduct(prod)}
-                          className="text-[#0755A5] hover:underline font-semibold flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Edit Modal Dialog */}
                 {editingProduct && (
                   <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4">
+                    <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                       <div className="flex items-center justify-between border-b pb-3">
-                        <h4 className="font-heading font-bold text-slate-900">Edit Component</h4>
+                        <div>
+                          <h4 className="font-heading font-bold text-slate-900">Edit Component Record</h4>
+                          <p className="text-[11px] text-slate-500">ID: {editingProduct.id}</p>
+                        </div>
                         <button onClick={() => setEditingProduct(null)}>
                           <X className="w-5 h-5 text-slate-400" />
                         </button>
                       </div>
+
+                      {productSaveError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                          {productSaveError}
+                        </div>
+                      )}
 
                       <div>
                         <label className="text-xs font-semibold text-slate-700 block mb-1">Product Name</label>
@@ -1019,39 +1091,111 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           type="text"
                           value={editingProduct.name}
                           onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                          className="w-full px-3 py-2 text-xs border rounded-lg"
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
                         />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-700 block mb-1">HSN / SAC Code</label>
+                          <input
+                            type="text"
+                            maxLength={8}
+                            value={editingProduct.hsnCode || editingProduct.hsn_code || ''}
+                            onChange={(e) => setEditingProduct({ ...editingProduct, hsnCode: e.target.value, hsn_code: e.target.value })}
+                            placeholder="e.g. 40169990"
+                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-700 block mb-1">Unit Rate (₹)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={((editingProduct.unitPricePaise !== undefined ? editingProduct.unitPricePaise : editingProduct.unit_price_paise) || 0) / 100}
+                            onChange={(e) => {
+                              const paise = Math.round(Number(e.target.value || 0) * 100);
+                              setEditingProduct({ ...editingProduct, unitPricePaise: paise, unit_price_paise: paise });
+                            }}
+                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Statutory GST Rate</label>
+                        <select
+                          value={(editingProduct.gstRateBps !== undefined && editingProduct.gstRateBps !== null) ? String(editingProduct.gstRateBps) : ((editingProduct.gst_rate_bps !== undefined && editingProduct.gst_rate_bps !== null) ? String(editingProduct.gst_rate_bps) : '')}
+                          onChange={(e) => {
+                            const bps = e.target.value === '' ? null : Number(e.target.value);
+                            setEditingProduct({ ...editingProduct, gstRateBps: bps, gst_rate_bps: bps });
+                          }}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5] bg-white font-medium"
+                        >
+                          <option value="">Unconfirmed Statutory Rate</option>
+                          <option value="0">0% (Nil)</option>
+                          <option value="500">5% (500 bps)</option>
+                          <option value="1200">12% (1200 bps)</option>
+                          <option value="1800">18% (1800 bps)</option>
+                          <option value="2800">28% (2800 bps)</option>
+                        </select>
                       </div>
 
                       <div>
                         <label className="text-xs font-semibold text-slate-700 block mb-1">Short Description</label>
                         <textarea
                           rows={2}
-                          value={editingProduct.shortDescription}
+                          value={editingProduct.shortDescription || editingProduct.short_description || ''}
                           onChange={(e) =>
-                            setEditingProduct({ ...editingProduct, shortDescription: e.target.value })
+                            setEditingProduct({ ...editingProduct, shortDescription: e.target.value, short_description: e.target.value })
                           }
-                          className="w-full px-3 py-2 text-xs border rounded-lg"
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
                         />
                       </div>
 
-                      <div className="pt-2 flex justify-end gap-2">
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="product_is_active"
+                          checked={Boolean(editingProduct.isActive ?? (editingProduct.is_active !== undefined ? Boolean(editingProduct.is_active) : true))}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, isActive: e.target.checked, is_active: e.target.checked })}
+                          className="rounded text-[#0755A5] focus:ring-[#0755A5]"
+                        />
+                        <label htmlFor="product_is_active" className="text-xs font-semibold text-slate-700">
+                          Active in Catalogue
+                        </label>
+                      </div>
+
+                      <div className="pt-2 flex justify-end gap-2 border-t">
                         <button
+                          type="button"
                           onClick={() => setEditingProduct(null)}
                           className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
                         >
                           Cancel
                         </button>
                         <button
-                          onClick={() => {
-                            const updated = StorageService.updateProduct(editingProduct);
-                            setProducts([...updated]);
-                            setEditingProduct(null);
-                            onDataChange?.();
+                          type="button"
+                          disabled={isSavingProduct}
+                          onClick={async () => {
+                            if (!editingProduct) return;
+                            setIsSavingProduct(true);
+                            setProductSaveError(null);
+                            const res = await ApiService.updateProduct(editingProduct.id, editingProduct);
+                            if (res.success) {
+                              setEditingProduct(null);
+                              await loadProducts();
+                              onDataChange?.();
+                            } else {
+                              setProductSaveError(res.error || 'Failed to update product in database.');
+                            }
+                            setIsSavingProduct(false);
                           }}
-                          className="px-4 py-2 text-xs bg-[#0755A5] text-white font-semibold rounded-lg hover:bg-[#102F59]"
+                          className="px-4 py-2 text-xs bg-[#0755A5] text-white font-semibold rounded-lg hover:bg-[#102F59] disabled:opacity-50"
                         >
-                          Save Changes
+                          {isSavingProduct ? 'Saving to D1...' : 'Save Changes'}
                         </button>
                       </div>
                     </div>

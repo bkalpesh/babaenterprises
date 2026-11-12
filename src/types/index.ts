@@ -10,7 +10,21 @@ export interface Product {
   applications: string[];
   materialsSupported: string[];
   features: string[];
+  hsnCode?: string | null;
+  unitPricePaise?: number;
+  gstRateBps?: number | null;
+  sortOrder?: number;
   isActive?: boolean;
+  // Aliases for DB compatibility
+  hsn_code?: string | null;
+  unit_price_paise?: number;
+  gst_rate_bps?: number | null;
+  category_label?: string;
+  short_description?: string;
+  full_description?: string;
+  image_url?: string;
+  is_active?: number | boolean;
+  sort_order?: number;
 }
 
 export interface Industry {

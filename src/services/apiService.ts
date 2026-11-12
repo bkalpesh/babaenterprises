@@ -130,34 +130,108 @@ export interface StagingQuotation {
 
 export const ApiService = {
   // ----------------------------------------------------------------------------
-  // Products
+  // Products (Database Authoritative)
   // ----------------------------------------------------------------------------
   async getProducts(): Promise<Product[]> {
-    try {
-      const res = await fetch(`${API_BASE}/products`);
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        if (data.success && Array.isArray(data.products) && data.products.length > 0) {
-          return data.products.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            category: p.category,
-            categoryLabel: p.category_label || p.categoryLabel,
-            image: p.image_url || p.image || '',
-            shortDescription: p.short_description || p.shortDescription || '',
-            fullDescription: p.full_description || p.fullDescription || '',
-            applications: typeof p.applications_json === 'string' ? JSON.parse(p.applications_json) : (p.applications || []),
-            materialsSupported: typeof p.materials_json === 'string' ? JSON.parse(p.materials_json) : (p.materialsSupported || []),
-            features: typeof p.features_json === 'string' ? JSON.parse(p.features_json) : (p.features || []),
-            isActive: p.is_active === 1 || p.isActive === true,
-          }));
-        }
-      }
-    } catch {
-      // Fallback
+    const res = await fetch(`${API_BASE}/products`);
+    if (!res.ok) {
+      throw new Error(`Failed to load products from server (HTTP ${res.status})`);
     }
-    return StorageService.getProducts();
+    const data = (await res.json()) as any;
+    if (!data.success || !Array.isArray(data.products)) {
+      throw new Error('Invalid product catalogue response from server');
+    }
+    return data.products.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      category: p.category,
+      categoryLabel: p.category_label || p.categoryLabel,
+      image: p.image_url || p.image || '',
+      shortDescription: p.short_description || p.shortDescription || '',
+      fullDescription: p.full_description || p.fullDescription || '',
+      applications: typeof p.applications_json === 'string' ? JSON.parse(p.applications_json) : (p.applications || []),
+      materialsSupported: typeof p.materials_json === 'string' ? JSON.parse(p.materials_json) : (p.materialsSupported || []),
+      features: typeof p.features_json === 'string' ? JSON.parse(p.features_json) : (p.features || []),
+      hsnCode: p.hsn_code || p.hsnCode || null,
+      unitPricePaise: p.unit_price_paise !== undefined ? Number(p.unit_price_paise) : 0,
+      gstRateBps: p.gst_rate_bps !== undefined && p.gst_rate_bps !== null ? Number(p.gst_rate_bps) : null,
+      sortOrder: p.sort_order !== undefined ? Number(p.sort_order) : 0,
+      isActive: p.is_active === 1 || p.is_active === true || p.isActive === true,
+      hsn_code: p.hsn_code || p.hsnCode || null,
+      unit_price_paise: p.unit_price_paise !== undefined ? Number(p.unit_price_paise) : 0,
+      gst_rate_bps: p.gst_rate_bps !== undefined && p.gst_rate_bps !== null ? Number(p.gst_rate_bps) : null,
+      category_label: p.category_label || p.categoryLabel,
+      short_description: p.short_description || p.shortDescription || '',
+      full_description: p.full_description || p.fullDescription || '',
+      image_url: p.image_url || p.image || '',
+      is_active: p.is_active ?? 1,
+      sort_order: p.sort_order ?? 0,
+    }));
+  },
+
+  async updateProduct(id: string, payload: Partial<Product>): Promise<{ success: boolean; product?: any; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/products/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({
+          name: payload.name,
+          unit_price_paise: payload.unitPricePaise !== undefined ? payload.unitPricePaise : payload.unit_price_paise,
+          gst_rate_bps: payload.gstRateBps !== undefined ? payload.gstRateBps : (payload.gst_rate_bps !== undefined ? payload.gst_rate_bps : null),
+          hsn_code: payload.hsnCode !== undefined ? payload.hsnCode : payload.hsn_code,
+          short_description: payload.shortDescription !== undefined ? payload.shortDescription : payload.short_description,
+          full_description: payload.fullDescription !== undefined ? payload.fullDescription : payload.full_description,
+          is_active: payload.isActive !== undefined ? (payload.isActive ? 1 : 0) : (payload.is_active !== undefined ? payload.is_active : undefined),
+        }),
+      });
+      const data = await res.json() as any;
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || `HTTP ${res.status}` };
+      }
+      return { success: true, product: data.product };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error while updating product' };
+    }
+  },
+
+  async createProduct(payload: Partial<Product>): Promise<{ success: boolean; product?: any; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({
+          name: payload.name,
+          slug: payload.slug,
+          category: payload.category || 'rubber',
+          category_label: payload.categoryLabel || payload.category_label || 'Rubber Components',
+          image_url: payload.image || payload.image_url,
+          short_description: payload.shortDescription || payload.short_description,
+          full_description: payload.fullDescription || payload.full_description,
+          hsn_code: payload.hsnCode || payload.hsn_code,
+          unit_price_paise: payload.unitPricePaise || payload.unit_price_paise || 0,
+          gst_rate_bps: payload.gstRateBps !== undefined ? payload.gstRateBps : payload.gst_rate_bps,
+          applications: payload.applications || [],
+          materials: payload.materialsSupported || [],
+          features: payload.features || [],
+          is_active: payload.isActive !== undefined ? (payload.isActive ? 1 : 0) : 1,
+          sort_order: payload.sortOrder || payload.sort_order || 0,
+        }),
+      });
+      const data = await res.json() as any;
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || `HTTP ${res.status}` };
+      }
+      return { success: true, product: data.product };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error while creating product' };
+    }
   },
 
   // ----------------------------------------------------------------------------

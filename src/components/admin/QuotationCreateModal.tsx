@@ -63,7 +63,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       unitOfMeasure: 'NOS',
       rate: 0,
       discountPercent: 0,
-      gstRate: 18,
+      gstRate: null, // Default to null (unconfirmed)
     },
   ]);
 
@@ -103,8 +103,26 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 
   // When a product catalog item is selected into a row
   const handleProductSelect = (index: number, productId: string) => {
+    if (!productId) {
+      setItems((prev) =>
+        prev.map((row, i) => (i === index ? { ...row, productId: undefined } : row))
+      );
+      return;
+    }
+
     const prod = availableProducts.find((p) => p.id === productId);
     if (!prod) return;
+
+    const unitPrice = prod.unitPricePaise
+      ? prod.unitPricePaise / 100
+      : prod.unit_price_paise
+      ? prod.unit_price_paise / 100
+      : 0;
+
+    const rawGstBps = prod.gstRateBps ?? prod.gst_rate_bps;
+    const gstRateVal = rawGstBps !== undefined && rawGstBps !== null ? rawGstBps / 100 : null;
+
+    const hsnVal = prod.hsnCode || prod.hsn_code || '';
 
     setItems((prev) =>
       prev.map((row, i) =>
@@ -113,7 +131,9 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               ...row,
               productId: prod.id,
               itemDescription: prod.name,
-              // Never use hardcoded defaults; use product fields if present
+              hsnCode: hsnVal || row.hsnCode,
+              rate: unitPrice > 0 ? unitPrice : row.rate,
+              gstRate: gstRateVal,
               unitOfMeasure: 'NOS',
             }
           : row
@@ -138,7 +158,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
         unitOfMeasure: 'NOS',
         rate: 0,
         discountPercent: 0,
-        gstRate: 18,
+        gstRate: null, // Default to null (unconfirmed)
       },
     ]);
   };
@@ -463,14 +483,30 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
                         <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
 
                         <td className="py-2.5 px-3">
-                          <input
-                            type="text"
-                            required
-                            value={row.itemDescription}
-                            onChange={(e) => updateItem(idx, 'itemDescription', e.target.value)}
-                            placeholder="e.g. Precision Nitrile O-Rings 24x3 mm"
-                            className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-[#0755A5]"
-                          />
+                          <div className="space-y-1">
+                            {availableProducts && availableProducts.length > 0 && (
+                              <select
+                                value={row.productId || ''}
+                                onChange={(e) => handleProductSelect(idx, e.target.value)}
+                                className="w-full px-1.5 py-1 text-[11px] font-medium border border-slate-200 rounded bg-slate-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#0755A5]"
+                              >
+                                <option value="">-- Select Product Catalogue Item --</option>
+                                {availableProducts.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} {p.hsnCode || p.hsn_code ? `[HSN: ${p.hsnCode || p.hsn_code}]` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <input
+                              type="text"
+                              required
+                              value={row.itemDescription}
+                              onChange={(e) => updateItem(idx, 'itemDescription', e.target.value)}
+                              placeholder="e.g. Precision Nitrile O-Rings 24x3 mm"
+                              className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-[#0755A5]"
+                            />
+                          </div>
                         </td>
 
                         <td className="py-2.5 px-2">
