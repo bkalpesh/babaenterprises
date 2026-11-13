@@ -1484,6 +1484,7 @@ export const worker = {
             await env.DB.prepare(`
               UPDATE quotation_dispatches SET
                 dispatch_status = 'TRANSMITTING',
+                provider_name = 'RESEND_STAGING',
                 retry_count = retry_count + 1,
                 initiated_at = datetime('now'),
                 error_message = NULL
@@ -1550,7 +1551,7 @@ export const worker = {
                 from: env.STAGING_EMAIL_FROM?.trim() || 'BABA ENTERPRISES <onboarding@resend.dev>',
                 to: [body.recipient_email.trim()],
                 subject: `Quotation ${quote.quotation_number} from BABA ENTERPRISES`,
-                text: `Dear Customer,\\n\\nPlease find attached quotation ${quote.quotation_number}.\\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\\n\\nBABA ENTERPRISES\\nBhosari, Pune`,
+                text: `Dear Customer,\n\nPlease find attached quotation ${quote.quotation_number}.\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\n\nBABA ENTERPRISES\nBhosari, Pune`,
                 attachments: [{ filename: pdfFilename, content: pdfBase64 }],
               }),
               signal: controller.signal,
