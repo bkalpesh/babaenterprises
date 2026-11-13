@@ -396,7 +396,6 @@ export function generateQuotationPDF(
     text('Quotation No: ' + (quotation.quotation_number || 'DRAFT'), 390, y + 36, 8, true);
     text('Date: ' + (quotation.quotation_date || ''), 390, y + 49, 8);
     text('Valid Until: ' + (quotation.valid_until || ''), 390, y + 62, 8);
-    text('Status: ' + quotation.status, 390, y + 75, 8);
     line(LEFT, y + 104, RIGHT, y + 104, 1.2);
     y += 120;
     if (!continued) {
