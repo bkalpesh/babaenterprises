@@ -25,7 +25,7 @@ import {
   getInvoicePrefix,
 } from './financials.ts';
 import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin.ts';
-import { generateInvoiceHTML } from './pdf.ts';
+import { generateInvoiceHTML, generateQuotationPDF } from './pdf.ts';
 
 // ------------------------------------------------------------------------------
 // Cryptographically Secure Helpers & Timing-Safe Comparison
@@ -1043,6 +1043,68 @@ export const worker = {
         return jsonResponse({ success: true, quotation: quote, items: items.results || [] });
       }
 
+      // Generate once, persist the binary in R2, and serve the saved object on subsequent requests.
+      if (url.pathname.match(/^\\/api\\/quotations\\/[^/]+\\/pdf$/) && method === 'GET') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        if (!env.DOCUMENTS_BUCKET) return errorResponse('Quotation PDF storage is unavailable.', 503);
+
+        const quoteId = url.pathname.split('/')[3];
+        const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
+        if (!quote) return errorResponse('Quotation not found.', 404);
+
+        const filename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.pdf`;
+        if (quote.pdf_r2_key) {
+          const saved = await env.DOCUMENTS_BUCKET.get(quote.pdf_r2_key);
+          if (saved) return new Response(saved.body, {
+            headers: {
+              'Content-Type': 'application/pdf',
+              'Content-Disposition': `inline; filename="${filename}"`,
+              'Cache-Control': 'private, no-store',
+              'X-Content-Type-Options': 'nosniff',
+            },
+          });
+        }
+
+        const settings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+        if (!settings) return errorResponse('Business settings are not configured.', 503);
+        const itemRows = await env.DB.prepare(
+          'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY line_number ASC'
+        ).bind(quoteId).all<DBQuotationItem>();
+        if (!itemRows.results?.length) return errorResponse('Quotation has no line items.', 422);
+
+        const pdfBytes = generateQuotationPDF(settings, quote, itemRows.results);
+        const objectKey = `quotation-pdfs/${quoteId}.pdf`;
+        await env.DOCUMENTS_BUCKET.put(objectKey, pdfBytes, {
+          httpMetadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
+          customMetadata: { quotationId: quoteId, quotationNumber: quote.quotation_number || quote.id },
+        });
+
+        const generatedAt = new Date().toISOString();
+        await env.DB.prepare(`
+          UPDATE quotations SET pdf_r2_key = ?, pdf_generated_at = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(objectKey, generatedAt, quoteId).run();
+
+        await env.DB.prepare(`
+          INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+          VALUES (?, 'QUOTATION', ?, 'QUOTATION_PDF_GENERATED', ?, ?)
+        `).bind(
+          'audit-' + crypto.randomUUID().slice(0, 8),
+          quoteId,
+          await getAuthActor(request, env),
+          JSON.stringify({ r2_key: objectKey, generated_at: generatedAt, byte_length: pdfBytes.length })
+        ).run();
+
+        return new Response(pdfBytes, {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="${filename}"`,
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+
       if (url.pathname.match(/^\/api\/quotations\/[^/]+$/) && method === 'PUT') {
         if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
         const quoteId = url.pathname.split('/')[3];
@@ -1111,6 +1173,8 @@ export const worker = {
               notes = ?,
               is_interstate = ?,
               customer_id = ?,
+              pdf_r2_key = NULL,
+              pdf_generated_at = NULL,
               updated_at = datetime('now')
             WHERE id = ?
           `).bind(
@@ -1191,6 +1255,9 @@ export const worker = {
         );
 
         await env.DB.batch(batchStmts);
+        if (quote.pdf_r2_key && env.DOCUMENTS_BUCKET) {
+          try { await env.DOCUMENTS_BUCKET.delete(quote.pdf_r2_key); } catch { /* Orphan cleanup can be retried independently. */ }
+        }
         const updatedQuote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
         return jsonResponse({ success: true, quotation: updatedQuote });
       }
