@@ -3,7 +3,7 @@
 // Renders clean, high-precision A4 printable tax documents
 // ==============================================================================
 
-import type { BusinessSettings, DBInvoice, DBInvoiceItem } from './types.ts';
+import type { BusinessSettings, DBInvoice, DBInvoiceItem, DBQuotation, DBQuotationItem } from './types.ts';
 import { formatPaiseToINR } from './financials.ts';
 
 function numberToWords(paise: number): string {
@@ -308,4 +308,200 @@ export function generateInvoiceHTML(
   </div>
 </body>
 </html>`;
+}
+
+
+/**
+ * Creates a self-contained, valid A4 PDF using the PDF standard's built-in
+ * Helvetica font. This runs in the Cloudflare Workers runtime without a
+ * browser, native binaries, or third-party PDF dependencies.
+ */
+export function generateQuotationPDF(
+  settings: BusinessSettings,
+  quotation: DBQuotation,
+  items: DBQuotationItem[]
+): Uint8Array {
+  const PAGE_W = 595.28;
+  const PAGE_H = 841.89;
+  const LEFT = 42;
+  const RIGHT = PAGE_W - 42;
+  const encoder = new TextEncoder();
+
+  const clean = (value: unknown): string => String(value ?? '')
+    .replace(/₹/g, 'INR ')
+    .replace(/[–—]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '?');
+
+  const esc = (value: unknown): string => clean(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+
+  const money = (paise: number): string =>
+    'INR ' + (Number(paise || 0) / 100).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true,
+    });
+
+  const wrap = (value: unknown, maxChars: number): string[] => {
+    const words = clean(value).split(/\s+/).filter(Boolean);
+    const result: string[] = [];
+    let line = '';
+    for (const word of words) {
+      if (word.length > maxChars) {
+        if (line) result.push(line);
+        line = '';
+        for (let i = 0; i < word.length; i += maxChars) result.push(word.slice(i, i + maxChars));
+      } else if (!line) line = word;
+      else if ((line + ' ' + word).length <= maxChars) line += ' ' + word;
+      else { result.push(line); line = word; }
+    }
+    if (line) result.push(line);
+    return result.length ? result : [''];
+  };
+
+  const pages: string[] = [];
+  let commands = '';
+  let y = 0;
+  let pageNumber = 0;
+
+  const text = (value: unknown, x: number, top: number, size = 9, bold = false) => {
+    commands += `BT /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${(PAGE_H - top).toFixed(2)} Tm (${esc(value)}) Tj ET\n`;
+  };
+  const line = (x1: number, top1: number, x2: number, top2: number, width = 0.6) => {
+    commands += `${width} w ${x1.toFixed(2)} ${(PAGE_H - top1).toFixed(2)} m ${x2.toFixed(2)} ${(PAGE_H - top2).toFixed(2)} l S\n`;
+  };
+  const rect = (x: number, top: number, width: number, height: number, gray = 0.94) => {
+    commands += `${gray} g ${x.toFixed(2)} ${(PAGE_H - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f 0 g\n`;
+  };
+
+  const startPage = (continued = false) => {
+    if (commands) pages.push(commands);
+    commands = '';
+    pageNumber += 1;
+    y = 42;
+    text(settings.legal_name || 'BABA ENTERPRISES', LEFT, y + 14, 17, true);
+    text('Industrial Rubber & Plastic Components Specialist', LEFT, y + 29, 8);
+    text(settings.address_line1, LEFT, y + 44, 8);
+    text([settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '), LEFT, y + 56, 8);
+    text('GSTIN: ' + (settings.gstin || ''), LEFT, y + 69, 8, true);
+    text('Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / '), LEFT, y + 81, 8);
+    text(settings.email || '', LEFT, y + 93, 8);
+    text(continued ? 'QUOTATION (CONTINUED)' : 'QUOTATION', 390, y + 17, 15, true);
+    text('Quotation No: ' + (quotation.quotation_number || 'DRAFT'), 390, y + 36, 8, true);
+    text('Date: ' + (quotation.quotation_date || ''), 390, y + 49, 8);
+    text('Valid Until: ' + (quotation.valid_until || ''), 390, y + 62, 8);
+    text('Status: ' + quotation.status, 390, y + 75, 8);
+    line(LEFT, y + 104, RIGHT, y + 104, 1.2);
+    y += 120;
+    if (!continued) {
+      text('BILL TO', LEFT, y, 8, true);
+      text(quotation.buyer_name || '', LEFT, y + 15, 10, true);
+      text(quotation.buyer_company || '', LEFT, y + 28, 8);
+      const addressLines = wrap(quotation.buyer_address || 'Address not provided', 58);
+      addressLines.slice(0, 2).forEach((v, i) => text(v, LEFT, y + 41 + i * 11, 8));
+      text('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'), 310, y + 15, 8);
+      text('State: ' + [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (' ) + (quotation.buyer_state_code ? ')' : ''), 310, y + 28, 8);
+      text('Phone: ' + (quotation.buyer_phone || '-'), 310, y + 41, 8);
+      text('Email: ' + (quotation.buyer_email || '-'), 310, y + 54, 8);
+      y += 78;
+    }
+    rect(LEFT, y, RIGHT - LEFT, 20, 0.90);
+    text('#', LEFT + 5, y + 13, 8, true);
+    text('Description', LEFT + 27, y + 13, 8, true);
+    text('HSN', 285, y + 13, 8, true);
+    text('Qty', 337, y + 13, 8, true);
+    text('Rate', 385, y + 13, 8, true);
+    text('GST', 440, y + 13, 8, true);
+    text('Amount', 490, y + 13, 8, true);
+    y += 20;
+  };
+
+  startPage(false);
+  items.forEach((item, index) => {
+    const description = wrap(item.item_description, 38);
+    const rowHeight = Math.max(25, description.length * 10 + 12);
+    if (y + rowHeight > 735) startPage(true);
+    text(String(index + 1), LEFT + 5, y + 15, 8);
+    description.forEach((v, i) => text(v, LEFT + 27, y + 13 + i * 10, 8));
+    text(item.hsn_code || '-', 285, y + 15, 7);
+    text((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' ' + item.unit_of_measure, 337, y + 15, 7);
+    text((Number(item.unit_price_paise) / 100).toFixed(2), 385, y + 15, 7);
+    text(item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%', 440, y + 15, 7);
+    text((Number(item.total_amount_paise) / 100).toFixed(2), 490, y + 15, 7);
+    line(LEFT, y + rowHeight, RIGHT, y + rowHeight, 0.35);
+    y += rowHeight;
+  });
+
+  if (y > 680) startPage(true);
+  y += 16;
+  line(LEFT, y, RIGHT, y, 0.9);
+  y += 18;
+  text('Subtotal (before discount): ' + money(quotation.subtotal_gross_paise), 335, y, 8);
+  y += 14;
+  text('Discount: ' + money(quotation.total_discount_paise), 335, y, 8);
+  y += 14;
+  text('Taxable Amount: ' + money(quotation.taxable_amount_paise), 335, y, 8);
+  y += 14;
+  if (Number(quotation.is_interstate) === 1) {
+    text('IGST: ' + money(quotation.igst_amount_paise), 335, y, 8);
+    y += 14;
+  } else {
+    text('CGST: ' + money(quotation.cgst_amount_paise), 335, y, 8);
+    y += 14;
+    text('SGST: ' + money(quotation.sgst_amount_paise), 335, y, 8);
+    y += 14;
+  }
+  text('Total Tax: ' + money(quotation.total_tax_paise), 335, y, 8);
+  y += 16;
+  rect(320, y - 11, RIGHT - 320, 25, 0.90);
+  text('GRAND TOTAL: ' + money(quotation.total_amount_paise), 330, y + 5, 11, true);
+  y += 28;
+
+  text('Payment Terms: ' + (quotation.payment_terms || settings.default_payment_terms || 'As mutually agreed'), LEFT, y, 8);
+  y += 13;
+  text('Delivery Terms: ' + (quotation.delivery_terms || 'As mutually agreed'), LEFT, y, 8);
+  y += 13;
+  const notes = wrap(quotation.notes || '', 95);
+  notes.slice(0, 3).forEach((v, i) => text('Notes: ' + v, LEFT, y + i * 11, 8));
+  y += Math.min(notes.length, 3) * 11 + 12;
+  text('For ' + (settings.legal_name || 'BABA ENTERPRISES'), 390, Math.min(y + 8, 780), 9, true);
+  text('Authorized Signatory', 390, Math.min(y + 48, 820), 8);
+  text('This is a computer-generated quotation.', LEFT, 810, 7);
+  text('Page ' + pageNumber, RIGHT - 40, 810, 7);
+  pages.push(commands);
+
+  const objects: string[] = [];
+  const addObject = (body: string) => { objects.push(body); return objects.length; };
+  const catalogId = addObject('');
+  const pagesId = addObject('');
+  const fontRegularId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const pageIds: number[] = [];
+  pages.forEach((stream) => {
+    const streamBytes = encoder.encode(stream);
+    const contentId = addObject(`<< /Length ${streamBytes.length} >>\nstream\n${stream}endstream`);
+    const pageId = addObject('');
+    pageIds.push(pageId);
+    objects[pageId - 1] = `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+  });
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => id + ' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
+
+  let pdf = '%PDF-1.4\n% BABA ENTERPRISES\n';
+  const offsets = [0];
+  objects.forEach((body, index) => {
+    offsets.push(encoder.encode(pdf).length);
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xrefOffset = encoder.encode(pdf).length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach(offset => { pdf += String(offset).padStart(10, '0') + ' 00000 n \n'; });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return encoder.encode(pdf);
 }
