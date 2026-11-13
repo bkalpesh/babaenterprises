@@ -67,6 +67,7 @@ export interface Env {
   ADMIN_PASSCODE?: string;
   JWT_SECRET?: string;
   STAGING_EMAIL_API_KEY?: string;
+  STAGING_EMAIL_FROM?: string;
 }
 
 export interface BusinessSettings {
