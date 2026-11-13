@@ -15,7 +15,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
   onSuccess,
   quotation,
 }) => {
-  const [targetStatus, setTargetStatus] = useState<'Accepted' | 'Rejected' | 'Expired' | 'Send'>('Accepted');
+  const [targetStatus, setTargetStatus] = useState<'Accepted' | 'Rejected' | 'Expired' | 'Send'>(quotation.status === 'Draft' ? 'Send' : 'Accepted');
   const [approvalEvidence, setApprovalEvidence] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [expiryReason, setExpiryReason] = useState('');
