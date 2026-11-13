@@ -798,6 +798,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td className="p-3 text-center">
                               <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={async () => {
+                                    const result = await ApiService.openQuotationPdf(q.id);
+                                    if (!result.success) alert(`Unable to open quotation PDF: ${result.error}`);
+                                  }}
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
+                                  title="Preview or generate saved quotation PDF"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  <span>PDF</span>
+                                </button>
                                 {q.status !== 'Converted' && (
                                   <button
                                     onClick={() => {
