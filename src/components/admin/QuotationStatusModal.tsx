@@ -24,6 +24,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
   const [customMessage, setCustomMessage] = useState('');
 
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -31,6 +32,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setIsSubmitting(true);
 
     try {
@@ -50,6 +52,11 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
         if (res && res.success === false) {
           setError(res.error || 'Failed to dispatch quotation.');
           setIsSubmitting(false);
+          return;
+        }
+
+        if (res?.simulated) {
+          setNotice(res.message || 'Dispatch was simulated. The quotation remains Draft until a real email provider accepts the dispatch.');
           return;
         }
 
@@ -128,6 +135,12 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {notice && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <span>{notice}</span>
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
