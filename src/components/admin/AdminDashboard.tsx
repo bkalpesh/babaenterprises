@@ -812,13 +812,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </button>
                                 )}
 
-                                <button
-                                  onClick={() => setStatusManagingQuotation(q)}
-                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0755A5] text-[11px] font-semibold rounded transition-colors"
-                                  title="Manage Quotation Status"
-                                >
-                                  Status
-                                </button>
+                                {(q.status === 'Draft' || q.status === 'Sent') && (
+                                  <button
+                                    onClick={() => setStatusManagingQuotation(q)}
+                                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#0755A5] text-[11px] font-semibold rounded transition-colors"
+                                    title="Manage quotation dispatch or customer decision"
+                                  >
+                                    {q.status === 'Draft' ? 'Dispatch' : 'Record Decision'}
+                                  </button>
+                                )}
 
                                 {q.status === 'Accepted' ? (
                                   <button
