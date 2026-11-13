@@ -47,6 +47,17 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+/** Encode binary PDF data for the Resend JSON attachments API without argument-size overflow. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 /**
  * Creates an HMAC-SHA256 signed stateless session token with 24-hour expiry
  */
@@ -1431,6 +1442,31 @@ export const worker = {
           }
         }
 
+        // Ensure a current quotation PDF exists in R2 before either live dispatch or simulation.
+        // PDF storage is independent of email credentials; missing objects are regenerated.
+        if (!env.DOCUMENTS_BUCKET) return errorResponse('Quotation PDF storage is unavailable.', 503);
+        let pdfR2Key = quote.pdf_r2_key;
+        let pdfObject = pdfR2Key ? await env.DOCUMENTS_BUCKET.get(pdfR2Key) : null;
+        if (!pdfObject) {
+          const settings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+          if (!settings) return errorResponse('Business settings are not configured; quotation PDF cannot be generated.', 503);
+          const pdfBytes = generateQuotationPDF(settings, quote, quoteItems.results);
+          pdfR2Key = `quotation-pdfs/${quoteId}.pdf`;
+          await env.DOCUMENTS_BUCKET.put(pdfR2Key, pdfBytes, {
+            httpMetadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
+            customMetadata: { quotationId: quoteId, quotationNumber: quote.quotation_number || quote.id },
+          });
+          await env.DB.prepare(`
+            UPDATE quotations SET pdf_r2_key = ?, pdf_generated_at = ?, updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(pdfR2Key, new Date().toISOString(), quoteId).run();
+          pdfObject = await env.DOCUMENTS_BUCKET.get(pdfR2Key);
+        }
+        if (!pdfObject) return errorResponse('Quotation PDF could not be retrieved from R2 for dispatch.', 503);
+        const pdfBytesForEmail = await new Response(pdfObject.body).arrayBuffer();
+        const pdfBase64 = arrayBufferToBase64(pdfBytesForEmail);
+        const pdfFilename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.pdf`;
+
         // STAGING CREDENTIAL ISOLATION:
         // Use ONLY dedicated STAGING_EMAIL_API_KEY. Do not fall back to generic or production credentials.
         const stagingApiKey = env.STAGING_EMAIL_API_KEY;
@@ -1509,10 +1545,13 @@ export const worker = {
                 'Idempotency-Key': providerIdempotencyKey,
               },
               body: JSON.stringify({
-                from: 'BABA ENTERPRISES <quotations@babaenterprises.com>',
+                // Resend's onboarding sender supports initial account-owner testing.
+                // Configure a verified custom-domain sender later via STAGING_EMAIL_FROM.
+                from: env.STAGING_EMAIL_FROM?.trim() || 'BABA ENTERPRISES <onboarding@resend.dev>',
                 to: [body.recipient_email.trim()],
                 subject: `Quotation ${quote.quotation_number} from BABA ENTERPRISES`,
-                text: `Dear Customer,\n\nPlease find details for quotation ${quote.quotation_number}.\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\n\nBABA ENTERPRISES\nBhosari, Pune\n\nNote: Binary PDF is not attached to this email transmission.`,
+                text: `Dear Customer,\\n\\nPlease find attached quotation ${quote.quotation_number}.\\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\\n\\nBABA ENTERPRISES\\nBhosari, Pune`,
+                attachments: [{ filename: pdfFilename, content: pdfBase64 }],
               }),
               signal: controller.signal,
             });
@@ -1637,7 +1676,8 @@ export const worker = {
                 provider_message_id: providerMessageId,
                 transport_provider: 'RESEND_STAGING',
                 transmission_status: 'ACCEPTED_BY_PROVIDER',
-                pdf_attached: false,
+                pdf_attached: true,
+                pdf_r2_key: pdfR2Key,
                 note: 'Accepted by provider; external inbox delivery is subject to recipient MTA acceptance.',
               })
             ),
@@ -1657,7 +1697,7 @@ export const worker = {
               provider_message_id: providerMessageId,
               sent_at: sentAt,
               sent_to_recipient: recipient,
-              pdf_attached: false,
+              pdf_attached: true,
               transport_note: 'Accepted by email provider; external inbox delivery is subject to recipient MTA acceptance.',
             },
           });
@@ -1728,6 +1768,7 @@ export const worker = {
               status: 'DRAFT_MAINTAINED',
               recovered_existing_dispatch: !!existingDispatch,
               pdf_attached: false,
+              pdf_available_in_r2: true,
             })
           ));
 
@@ -1739,7 +1780,7 @@ export const worker = {
             simulated: true,
             dispatch_id: simDispatchId,
             idempotent: !!existingDispatch,
-            message: 'Staging environment has no active STAGING_EMAIL_API_KEY configured. Simulation recorded or safely recovered in quotation_dispatches and audit_logs. Quotation strictly remains in Draft status. PDF binary dispatch is not claimed/implemented.',
+            message: 'No active STAGING_EMAIL_API_KEY is configured. Dispatch was safely simulated; no email was transmitted and the quotation remains Draft. The PDF is saved in R2 and available separately.',
             quotation: quote,
           });
         }
