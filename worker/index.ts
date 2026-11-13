@@ -1487,11 +1487,12 @@ export const worker = {
               UPDATE quotation_dispatches SET
                 dispatch_status = 'TRANSMITTING',
                 provider_name = 'RESEND_STAGING',
+                provider_idempotency_key = ?,
                 retry_count = retry_count + 1,
                 initiated_at = datetime('now'),
                 error_message = NULL
               WHERE id = ?
-            `).bind(dispatchId).run();
+            `).bind(providerIdempotencyKey, dispatchId).run();
 
             // Record every retry attempt in audit log
             await env.DB.prepare(`
