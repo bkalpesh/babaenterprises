@@ -1034,7 +1034,7 @@ export const worker = {
         }
       }
 
-      if (url.pathname.match(/^\/api\/quotations\/[^/]+$/) && method === 'GET') {
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/pdf$/) && method === 'GET') {
         if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
         const quoteId = url.pathname.split('/')[3];
         const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
