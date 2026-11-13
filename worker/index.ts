@@ -1596,10 +1596,39 @@ export const worker = {
           });
         } else {
           // STAGING SAFETY MODE (NO STAGING_EMAIL_API_KEY CONFIGURED)
-          // Insert durable SIMULATED dispatch record. Quotation strictly remains in Draft.
-          const simDispatchId = 'disp-sim-' + crypto.randomUUID().slice(0, 8);
-          await env.DB.batch([
-            env.DB.prepare(`
+          // Reuse an existing dispatch row on retries: idempotency_key is UNIQUE.
+          // A simulated dispatch is not a real customer transmission and keeps the quote Draft.
+          if (existingDispatch && existingDispatch.dispatch_status === 'SIMULATED') {
+            return jsonResponse({
+              success: true,
+              status: 'Draft',
+              simulated: true,
+              dispatch_id: existingDispatch.id,
+              dispatch: existingDispatch,
+              idempotent: true,
+              message: 'This quotation dispatch was already simulated in staging. No duplicate record was created; quotation remains Draft.',
+              quotation: quote,
+            });
+          }
+
+          const simDispatchId = existingDispatch?.id || ('disp-sim-' + crypto.randomUUID().slice(0, 8));
+          const simulationProviderKey = existingDispatch?.provider_idempotency_key || ('sim-' + crypto.randomUUID());
+          const simulationStatements = [];
+
+          if (existingDispatch) {
+            // Recover a prior failed/timed-out attempt in place; preserve its unique key and history.
+            simulationStatements.push(env.DB.prepare(`
+              UPDATE quotation_dispatches SET
+                dispatch_status = 'SIMULATED',
+                provider_name = 'STAGING_SIMULATION',
+                provider_idempotency_key = ?,
+                initiated_at = datetime('now'),
+                completed_at = datetime('now'),
+                error_message = NULL
+              WHERE id = ?
+            `).bind(simulationProviderKey, simDispatchId));
+          } else {
+            simulationStatements.push(env.DB.prepare(`
               INSERT INTO quotation_dispatches (
                 id, quotation_id, idempotency_key, recipient_email, recipient_name,
                 dispatch_status, provider_name, provider_idempotency_key,
@@ -1611,34 +1640,39 @@ export const worker = {
               idempotencyKey,
               body.recipient_email.trim(),
               body.recipient_name ? body.recipient_name.trim() : null,
-              'sim-' + crypto.randomUUID(),
+              simulationProviderKey,
               actor
-            ),
-            env.DB.prepare(`
-              INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
-              VALUES (?, 'QUOTATION', ?, 'DISPATCH_SIMULATED', ?, ?)
-            `).bind(
-              'audit-' + crypto.randomUUID().slice(0, 8),
-              quoteId,
-              actor,
-              JSON.stringify({
-                dispatch_id: simDispatchId,
-                quotation_number: quote.quotation_number,
-                attempted_recipient: recipient,
-                attempted_at: sentAt,
-                reason: 'NO_ACTIVE_STAGING_EMAIL_API_KEY',
-                status: 'DRAFT_MAINTAINED',
-                pdf_attached: false,
-              })
-            ),
-          ]);
+            ));
+          }
+
+          simulationStatements.push(env.DB.prepare(`
+            INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+            VALUES (?, 'QUOTATION', ?, 'DISPATCH_SIMULATED', ?, ?)
+          `).bind(
+            'audit-' + crypto.randomUUID().slice(0, 8),
+            quoteId,
+            actor,
+            JSON.stringify({
+              dispatch_id: simDispatchId,
+              quotation_number: quote.quotation_number,
+              attempted_recipient: recipient,
+              attempted_at: sentAt,
+              reason: 'NO_ACTIVE_STAGING_EMAIL_API_KEY',
+              status: 'DRAFT_MAINTAINED',
+              recovered_existing_dispatch: !!existingDispatch,
+              pdf_attached: false,
+            })
+          ));
+
+          await env.DB.batch(simulationStatements);
 
           return jsonResponse({
             success: true,
             status: 'Draft',
             simulated: true,
             dispatch_id: simDispatchId,
-            message: 'Staging environment has no active STAGING_EMAIL_API_KEY configured. Simulation recorded in quotation_dispatches and audit_logs. Quotation strictly remains in Draft status. PDF binary dispatch is not claimed/implemented.',
+            idempotent: !!existingDispatch,
+            message: 'Staging environment has no active STAGING_EMAIL_API_KEY configured. Simulation recorded or safely recovered in quotation_dispatches and audit_logs. Quotation strictly remains in Draft status. PDF binary dispatch is not claimed/implemented.',
             quotation: quote,
           });
         }
