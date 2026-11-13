@@ -1034,7 +1034,7 @@ export const worker = {
         }
       }
 
-      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/pdf$/) && method === 'GET') {
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+$/) && method === 'GET') {
         if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
         const quoteId = url.pathname.split('/')[3];
         const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
@@ -1044,7 +1044,7 @@ export const worker = {
       }
 
       // Generate once, persist the binary in R2, and serve the saved object on subsequent requests.
-      if (url.pathname.match(/^\\/api\\/quotations\\/[^/]+\\/pdf$/) && method === 'GET') {
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/pdf$/) && method === 'GET') {
         if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
         if (!env.DOCUMENTS_BUCKET) return errorResponse('Quotation PDF storage is unavailable.', 503);
 
