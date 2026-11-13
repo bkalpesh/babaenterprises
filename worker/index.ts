@@ -1405,7 +1405,7 @@ export const worker = {
           // If a retry is attempted after the provider's 24-hour retention window, safe reconciliation cannot be guaranteed
           // at the provider layer. Require manual review rather than risking duplicate transmission.
           const dispatchAgeMs = Date.now() - new Date(existingDispatch.initiated_at).getTime();
-          if (dispatchAgeMs > 86400000) {
+          if (existingDispatch.dispatch_status !== 'SIMULATED' && dispatchAgeMs > 86400000) {
             return errorResponse(
               'Provider 24-hour idempotency retention window has expired for this dispatch record. The upstream email transport can no longer guarantee duplicate prevention for this key. Manual administrative review is required before re-attempting dispatch.',
               422
@@ -1477,7 +1477,9 @@ export const worker = {
           // A retry of the same dispatch MUST reuse the exact same provider_idempotency_key.
           // It must NEVER generate a new key on retry.
           const dispatchId = existingDispatch ? existingDispatch.id : ('disp-' + crypto.randomUUID().slice(0, 8));
-          const providerIdempotencyKey = existingDispatch?.provider_idempotency_key || `baba-qt-disp-${quote.id}`;
+          const providerIdempotencyKey = existingDispatch?.dispatch_status === 'SIMULATED'
+            ? `baba-qt-disp-${quote.id}`
+            : (existingDispatch?.provider_idempotency_key || `baba-qt-disp-${quote.id}`);
 
           if (existingDispatch) {
             // Safe retry: update existing dispatch record with TRANSMITTING status, increment retry count, KEEP SAME provider_idempotency_key
