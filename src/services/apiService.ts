@@ -469,6 +469,34 @@ export const ApiService = {
     }
   },
 
+  async openQuotationPdf(id: string): Promise<{ success: boolean; error?: string }> {
+    // Open the tab synchronously so browser popup blockers do not reject the later PDF response.
+    const pdfWindow = window.open('about:blank', '_blank');
+    if (!pdfWindow) return { success: false, error: 'Allow pop-ups to preview the quotation PDF.' };
+    try {
+      const res = await fetch(`${API_BASE}/quotations/${encodeURIComponent(id)}/pdf`, {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        pdfWindow.close();
+        return { success: false, error: data.error || `PDF request failed (HTTP ${res.status}).` };
+      }
+      const blob = await res.blob();
+      if (blob.type !== 'application/pdf') {
+        pdfWindow.close();
+        return { success: false, error: 'The server did not return a PDF document.' };
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      pdfWindow.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      return { success: true };
+    } catch (err: any) {
+      pdfWindow.close();
+      return { success: false, error: err.message || 'Unable to load quotation PDF.' };
+    }
+  },
+
   async createQuotation(payload: any): Promise<any> {
     const res = await fetch(`${API_BASE}/quotations`, {
       method: 'POST',
