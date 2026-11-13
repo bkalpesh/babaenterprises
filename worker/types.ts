@@ -267,6 +267,9 @@ export interface DBQuotation {
   apply_round_off: number;
   round_off_paise: number;
   total_amount_paise: number;
+  is_interstate: number;
+  pdf_r2_key: string | null;
+  pdf_generated_at: string | null;
   payment_terms: string | null;
   delivery_terms: string | null;
   notes: string | null;
