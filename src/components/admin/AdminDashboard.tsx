@@ -820,10 +820,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   Status
                                 </button>
 
-                                {q.status !== 'Converted' ? (
+                                {q.status === 'Accepted' ? (
                                   <button
                                     onClick={async () => {
-                                      if (window.confirm(`Convert Quotation ${q.quotation_number} to a Draft GST Tax Invoice?`)) {
+                                      if (window.confirm(`Convert accepted Quotation ${q.quotation_number} to a Draft GST Tax Invoice?`)) {
                                         const res = await ApiService.convertQuotationToInvoice(q.id);
                                         if (res.success) {
                                           alert('Quotation converted to Draft Invoice successfully!');
@@ -835,11 +835,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       }
                                     }}
                                     className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded transition-colors"
+                                    title="Convert accepted quotation to invoice"
                                   >
                                     Convert
                                   </button>
-                                ) : (
+                                ) : q.status === 'Converted' ? (
                                   <span className="text-[11px] text-purple-700 font-medium">Converted</span>
+                                ) : (
+                                  <span
+                                    className="px-2 py-1 text-[10px] font-medium text-slate-500 bg-slate-100 rounded"
+                                    title="A quotation must be sent and accepted before it can be converted"
+                                  >
+                                    {q.status === 'Draft' ? 'Send for Approval' : 'Awaiting Decision'}
+                                  </span>
                                 )}
                               </div>
                             </td>
