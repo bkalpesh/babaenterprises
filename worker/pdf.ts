@@ -70,7 +70,7 @@ export function generateInvoiceHTML(
   <meta charset="UTF-8">
   <title>Tax Invoice - ${invoice.invoice_number || 'DRAFT'}</title>
   <style>
-    @page { size: A4 portrait; margin: 62mm 10mm 38mm; }
+    @page { size: A4 portrait; margin: 12mm 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
     .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
@@ -122,12 +122,21 @@ export function generateInvoiceHTML(
       html, body { width: 100%; margin: 0; padding: 0; background: #fff; }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .no-print { display: none !important; }
-      .invoice-card { width: 100%; max-width: none; margin: 0; border: 0; overflow: visible; }
-      .invoice-header { position: fixed; z-index: 20; top: -59mm; left: 10mm; right: 10mm; width: auto; }
-      .invoice-footer { position: fixed; z-index: 20; bottom: -35mm; left: 10mm; right: 10mm; width: auto; }
-      .buyer-table, .items-table, .summary-table { width: 100%; }
+      /*
+       * Keep the invoice in normal document flow for Chromium's print engine.
+       * Fixed-position elements combined with large @page margins were causing
+       * the header/footer to detach from the content and appear on wrong pages.
+       * The header now starts page 1; the footer follows totals on the final page.
+       */
+      .invoice-card { display: block; width: 100%; max-width: none; margin: 0; border: 1.5px solid #0f172a; overflow: visible; }
+      .invoice-header, .invoice-footer { position: static; display: block; width: 100%; }
+      .buyer-table, .items-table, .summary-table, .footer-table { width: 100%; }
+      .items-table { page-break-after: auto; }
       .items-table thead { display: table-header-group; }
-      .items-table tr, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .items-table tbody { display: table-row-group; }
+      .items-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .summary-table, .summary-table tr, .footer-table, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .cancelled-watermark { position: absolute; }
     }
   </style>
 </head>
