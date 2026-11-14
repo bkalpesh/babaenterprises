@@ -384,7 +384,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         ) : (
           /* Authenticated Dashboard Tabs */
-          <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+          <div className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden bg-slate-50">
             {/* Tab Navigation */}
             <div className="flex shrink-0 items-center gap-4 overflow-x-auto border-b border-slate-200 bg-white px-3 sm:gap-6 sm:px-6">
               <button
