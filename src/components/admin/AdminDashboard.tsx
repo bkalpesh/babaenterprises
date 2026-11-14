@@ -765,6 +765,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     No quotations generated yet. Click "Create Quotation" to issue an initial commercial quote.
                   </div>
                 ) : (
+                  <>
                   <div className="space-y-3 md:hidden">
                     {quotations.map((q) => (
                       <article key={q.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -885,6 +886,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
             )}
