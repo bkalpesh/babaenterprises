@@ -114,6 +114,7 @@ export interface StagingQuotation {
   buyer_name: string; // Legal entity name, same meaning as invoice buyer_name
   buyer_company: string | null; // Trade / operating name, same meaning as invoice buyer_trade_name
   buyer_contact_person?: string | null;
+  buyer_fields_version?: number;
   buyer_gstin: string | null;
   buyer_state_code: string;
   buyer_state_name: string;
