@@ -58,7 +58,7 @@ export const ResponsiveLineItemsEditor: React.FC<ResponsiveLineItemsEditorProps>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-[11px] font-semibold text-slate-600">HSN / SAC
-                <input type="text" inputMode="numeric" maxLength={8} value={row.hsnCode} onChange={(e) => onUpdate(idx, 'hsnCode', e.target.value.replace(/\\D/g, ''))} placeholder="4–8 digits" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-mono text-sm" />
+                <input type="text" inputMode="numeric" maxLength={8} value={row.hsnCode} onChange={(e) => onUpdate(idx, 'hsnCode', e.target.value.replace(/\D/g, ''))} placeholder="4–8 digits" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-mono text-sm" />
               </label>
               <label className="block text-[11px] font-semibold text-slate-600">GST rate
                 <select value={row.gstRate !== null ? String(row.gstRate) : ''} onChange={(e) => onUpdate(idx, 'gstRate', e.target.value === '' ? null : Number(e.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm">
