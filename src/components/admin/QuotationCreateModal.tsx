@@ -52,6 +52,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
   const [buyerName, setBuyerName] = useState(''); // Legal entity name, aligned with invoice buyer_name
   const [buyerCompany, setBuyerCompany] = useState(''); // Trade / operating name
   const [buyerContactPerson, setBuyerContactPerson] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
   const [buyerGstin, setBuyerGstin] = useState('');
   const [buyerAddress, setBuyerAddress] = useState('');
   const [buyerCity, setBuyerCity] = useState('');
@@ -89,6 +91,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setBuyerName(initialData.buyer_name || '');
       setBuyerCompany(initialData.buyer_company || '');
       setBuyerContactPerson(initialData.buyer_contact_person || '');
+      setBuyerPhone(initialData.buyer_phone || '');
+      setBuyerEmail(initialData.buyer_email || '');
       setBuyerGstin(initialData.buyer_gstin || '');
       setBuyerAddress(initialData.buyer_address || '');
       setBuyerCity(initialData.buyer_city || '');
@@ -121,6 +125,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setBuyerName('');
       setBuyerCompany('');
       setBuyerContactPerson('');
+      setBuyerPhone('');
+      setBuyerEmail('');
       setBuyerGstin('');
       setBuyerAddress('');
       setBuyerCity('');
@@ -154,6 +160,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setBuyerName(cust.legalName || cust.legal_name || '');
       setBuyerCompany(cust.tradeName || cust.trade_name || '');
       setBuyerContactPerson(cust.contactPerson || cust.contact_person || '');
+      setBuyerPhone(cust.mobile || '');
+      setBuyerEmail(cust.email || '');
       setBuyerGstin(cust.gstin || '');
       setBuyerAddress(cust.billingAddress || cust.billing_address || '');
       setBuyerCity(cust.city || '');
@@ -281,6 +289,10 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setError('Buyer Legal Name is mandatory.');
       return;
     }
+    if (buyerPincode.trim() && !/^[1-9][0-9]{5}$/.test(buyerPincode.trim())) {
+      setError('Buyer PIN Code must be a valid 6-digit Indian PIN code.');
+      return;
+    }
 
     if (items.length === 0) {
       setError('At least one line item is required.');
@@ -310,6 +322,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
         buyer_name: buyerName.trim(),
         buyer_company: buyerCompany.trim() || undefined,
         buyer_contact_person: buyerContactPerson.trim() || undefined,
+        buyer_phone: buyerPhone.trim() || undefined,
+        buyer_email: buyerEmail.trim() || undefined,
         buyer_address: buyerAddress.trim() || undefined,
         buyer_city: buyerCity.trim() || undefined,
         buyer_state_name: buyerState?.name || 'Maharashtra',
@@ -438,6 +452,14 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Person</label>
                 <input type="text" value={buyerContactPerson} onChange={(e) => setBuyerContactPerson(e.target.value)} placeholder="e.g. Mr. Rajesh Kulkarni" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Phone</label>
+                <input type="tel" value={buyerPhone} onChange={(e) => setBuyerPhone(e.target.value)} placeholder="Customer phone" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Email</label>
+                <input type="email" value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} placeholder="Customer email" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
