@@ -403,12 +403,13 @@ export function generateQuotationPDF(
       text(quotation.buyer_name || '', LEFT, y + 15, 10, true);
       text(quotation.buyer_company || '', LEFT, y + 28, 8);
       const addressLines = wrap(quotation.buyer_address || 'Address not provided', 58);
-      addressLines.slice(0, 2).forEach((v, i) => text(v, LEFT, y + 41 + i * 11, 8));
+      addressLines.forEach((v, i) => text(v, LEFT, y + 41 + i * 11, 8));
       text('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'), 310, y + 15, 8);
       text('State: ' + [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (' ) + (quotation.buyer_state_code ? ')' : ''), 310, y + 28, 8);
-      text('Phone: ' + (quotation.buyer_phone || '-'), 310, y + 41, 8);
-      text('Email: ' + (quotation.buyer_email || '-'), 310, y + 54, 8);
-      y += 78;
+      text('PIN Code: ' + (quotation.buyer_pincode || '-'), 310, y + 41, 8);
+      text('Phone: ' + (quotation.buyer_phone || '-'), 310, y + 54, 8);
+      text('Email: ' + (quotation.buyer_email || '-'), 310, y + 67, 8);
+      y += Math.max(82, 52 + addressLines.length * 11);
     }
     rect(LEFT, y, RIGHT - LEFT, 20, 0.90);
     text('#', LEFT + 5, y + 13, 8, true);
