@@ -163,7 +163,7 @@ export function generateInvoiceHTML(
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">BILL TO (BUYER DETAILS):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Cash / Retail Buyer'}</div>
           ${invoice.buyer_trade_name ? `<div>${invoice.buyer_trade_name}</div>` : ''}
-          <div class="buyer-address-line">${(invoice.buyer_address || 'Address not specified').split(/[,\\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
+          <div class="buyer-address-line">${(invoice.buyer_address || 'Address not specified').split(/[,\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
           <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">State:</span> ${invoice.buyer_state_name || 'N/A'} (Code: ${invoice.buyer_state_code || 'N/A'})</div>
           <div><span class="bold">GSTIN:</span> ${invoice.buyer_gstin || 'URP (Unregistered)'}</div>
@@ -171,7 +171,7 @@ export function generateInvoiceHTML(
         <td>
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">SHIP TO (DISPATCH DESTINATION):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Same as Bill To'}</div>
-          <div class="buyer-address-line">${(invoice.buyer_address || 'Same as Billing Address').split(/[,\\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
+          <div class="buyer-address-line">${(invoice.buyer_address || 'Same as Billing Address').split(/[,\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
           <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">Place of Supply:</span> ${invoice.place_of_supply || invoice.buyer_state_name || 'Maharashtra (27)'}</div>
         </td>
