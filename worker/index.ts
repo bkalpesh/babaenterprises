@@ -1281,13 +1281,16 @@ export const worker = {
         const actor = await getAuthActor(request, env);
         const quoteId = url.pathname.split('/')[3];
         const body = (await request.json()) as {
+          dispatch_method?: 'EMAIL' | 'MANUAL';
           recipient_email?: string;
           recipient_name?: string;
           custom_message?: string;
+          manual_confirmation?: boolean;
         };
+        const dispatchMethod = body.dispatch_method === 'MANUAL' ? 'MANUAL' : 'EMAIL';
 
-        if (!body.recipient_email || !body.recipient_email.includes('@')) {
-          return errorResponse('Valid recipient email address is required for quotation dispatch.');
+        if (dispatchMethod === 'EMAIL' && (!body.recipient_email || !body.recipient_email.includes('@'))) {
+          return errorResponse('A valid recipient email address is required when email dispatch is selected.');
         }
 
         const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
@@ -1295,9 +1298,12 @@ export const worker = {
           .first<DBQuotation>();
         if (!quote) return errorResponse('Quotation not found.', 404);
 
-        const recipient = body.recipient_name
-          ? `${body.recipient_name.trim()} <${body.recipient_email.trim()}>`
-          : body.recipient_email.trim();
+        const manualRecipientEmail = body.recipient_email?.trim() || quote.buyer_email || '';
+        const recipient = dispatchMethod === 'MANUAL'
+          ? (body.recipient_name ? `${body.recipient_name.trim()} (manual PDF sharing)` : 'Manual PDF sharing')
+          : (body.recipient_name
+            ? `${body.recipient_name.trim()} <${body.recipient_email!.trim()}>`
+            : body.recipient_email!.trim());
         const sentAt = new Date().toISOString();
 
         // Determine durable idempotency key from header or default deterministic quotation key
@@ -1313,13 +1319,25 @@ export const worker = {
         // 7.B RECIPIENT VALIDATION BEFORE ANY RECOVERY OR RETRY BRANCH:
         // Validate recipient before ANY existing-dispatch recovery branch.
         // Recovery must use the original persisted recipient. It must never synchronize a quotation to Sent using a different recipient supplied by a later request.
-        if (existingDispatch) {
-          if (existingDispatch.recipient_email.toLowerCase() !== body.recipient_email.trim().toLowerCase()) {
+        if (existingDispatch && dispatchMethod === 'EMAIL') {
+          if (existingDispatch.recipient_email.toLowerCase() !== body.recipient_email!.trim().toLowerCase()) {
             return errorResponse(
-              `Cannot alter recipient to '${body.recipient_email.trim()}' under existing dispatch record. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
+              `Cannot alter recipient to '${body.recipient_email!.trim()}' under existing dispatch record. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
               422
             );
           }
+        }
+
+        // Manual dispatch is idempotent and is not represented as a provider transmission.
+        if (existingDispatch && existingDispatch.dispatch_status === 'ACCEPTED' && existingDispatch.provider_name === 'MANUAL') {
+          return jsonResponse({
+            success: true,
+            quotation: quote,
+            dispatch: existingDispatch,
+            manual: true,
+            idempotent: true,
+            message: 'Manual PDF sharing was already confirmed for this quotation. No email was sent.',
+          });
         }
 
         // IDEMPOTENT RECOVERY & DUPLICATE PROTECTION:
@@ -1393,9 +1411,9 @@ export const worker = {
 
           // 2. Outbound Payload & Recipient Invariance:
           // Prevent retrying with an altered recipient under the same dispatch / idempotency key.
-          if (existingDispatch.recipient_email.toLowerCase() !== body.recipient_email.trim().toLowerCase()) {
+          if (dispatchMethod === 'EMAIL' && existingDispatch.recipient_email.toLowerCase() !== body.recipient_email!.trim().toLowerCase()) {
             return errorResponse(
-              `Cannot alter recipient to '${body.recipient_email.trim()}' under existing dispatch key. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
+              `Cannot alter recipient to '${body.recipient_email!.trim()}' under existing dispatch key. Original recipient was '${existingDispatch.recipient_email}'. Create a new quotation or request a distinct dispatch key.`,
               422
             );
           }
@@ -1463,6 +1481,96 @@ export const worker = {
           pdfObject = await env.DOCUMENTS_BUCKET.get(pdfR2Key);
         }
         if (!pdfObject) return errorResponse('Quotation PDF could not be retrieved from R2 for dispatch.', 503);
+
+        if (dispatchMethod === 'MANUAL') {
+          if (body.manual_confirmation !== true) {
+            return errorResponse('Confirm that you have shared the quotation PDF with the customer before marking it Sent.', 422);
+          }
+
+          const manualDispatchId = existingDispatch?.id || ('disp-manual-' + crypto.randomUUID().slice(0, 8));
+          const manualProviderKey = existingDispatch?.provider_idempotency_key || ('manual-' + quote.id);
+          const manualMarker = 'MANUAL-' + quote.id;
+          const manualStatements = [];
+
+          if (existingDispatch) {
+            manualStatements.push(env.DB.prepare(`
+              UPDATE quotation_dispatches SET
+                dispatch_status = 'ACCEPTED',
+                provider_name = 'MANUAL',
+                provider_message_id = ?,
+                completed_at = datetime('now'),
+                error_message = NULL
+              WHERE id = ?
+            `).bind(manualMarker, manualDispatchId));
+          } else {
+            manualStatements.push(env.DB.prepare(`
+              INSERT INTO quotation_dispatches (
+                id, quotation_id, idempotency_key, recipient_email, recipient_name,
+                dispatch_status, provider_name, provider_message_id, provider_idempotency_key,
+                initiated_at, completed_at, initiated_by
+              ) VALUES (?, ?, ?, ?, ?, 'ACCEPTED', 'MANUAL', ?, ?, datetime('now'), datetime('now'), ?)
+            `).bind(
+              manualDispatchId,
+              quoteId,
+              idempotencyKey,
+              manualRecipientEmail,
+              body.recipient_name?.trim() || null,
+              manualMarker,
+              manualProviderKey,
+              actor
+            ));
+          }
+
+          manualStatements.push(env.DB.prepare(`
+            UPDATE quotations SET
+              status = 'Sent',
+              dispatch_id = ?,
+              sent_at = ?,
+              sent_to_recipient = ?,
+              updated_at = datetime('now')
+            WHERE id = ? AND status = 'Draft'
+          `).bind(manualDispatchId, sentAt, recipient, quoteId));
+
+          manualStatements.push(env.DB.prepare(`
+            INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details_json)
+            VALUES (?, 'QUOTATION', ?, 'DISPATCH_MANUAL_CONFIRMED', ?, ?)
+          `).bind(
+            'audit-' + crypto.randomUUID().slice(0, 8),
+            quoteId,
+            actor,
+            JSON.stringify({
+              dispatch_id: manualDispatchId,
+              quotation_number: quote.quotation_number,
+              dispatch_method: 'MANUAL',
+              confirmed_at: sentAt,
+              recipient_email: manualRecipientEmail || null,
+              email_sent: false,
+              pdf_r2_key: pdfR2Key,
+              confirmation: 'Administrator confirmed the quotation PDF was shared outside the application.',
+            })
+          ));
+
+          await env.DB.batch(manualStatements);
+          const updatedQuote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?')
+            .bind(quoteId)
+            .first<DBQuotation>();
+
+          return jsonResponse({
+            success: true,
+            quotation: updatedQuote,
+            manual: true,
+            dispatch: {
+              dispatch_id: manualDispatchId,
+              status: 'Sent',
+              dispatch_method: 'MANUAL',
+              confirmed_at: sentAt,
+              email_sent: false,
+              pdf_r2_key: pdfR2Key,
+            },
+            message: 'Manual dispatch confirmed. Quotation is now Sent. No email was sent.',
+          });
+        }
+
         const pdfBytesForEmail = await new Response(pdfObject.body).arrayBuffer();
         const pdfBase64 = arrayBufferToBase64(pdfBytesForEmail);
         const pdfFilename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.pdf`;
@@ -1522,7 +1630,7 @@ export const worker = {
               dispatchId,
               quoteId,
               idempotencyKey,
-              body.recipient_email.trim(),
+              body.recipient_email!.trim(),
               body.recipient_name ? body.recipient_name.trim() : null,
               providerIdempotencyKey,
               actor
@@ -1552,7 +1660,7 @@ export const worker = {
                 // Resend's onboarding sender supports initial account-owner testing.
                 // Configure a verified custom-domain sender later via STAGING_EMAIL_FROM.
                 from: env.STAGING_EMAIL_FROM?.trim() || 'BABA ENTERPRISES <onboarding@resend.dev>',
-                to: [body.recipient_email.trim()],
+                to: [body.recipient_email!.trim()],
                 subject: `Quotation ${quote.quotation_number} from BABA ENTERPRISES`,
                 text: `Dear Customer,\n\nPlease find attached quotation ${quote.quotation_number}.\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\n\nBABA ENTERPRISES\nBhosari, Pune`,
                 attachments: [{ filename: pdfFilename, content: pdfBase64 }],
@@ -1749,7 +1857,7 @@ export const worker = {
               simDispatchId,
               quoteId,
               idempotencyKey,
-              body.recipient_email.trim(),
+              body.recipient_email!.trim(),
               body.recipient_name ? body.recipient_name.trim() : null,
               simulationProviderKey,
               actor
