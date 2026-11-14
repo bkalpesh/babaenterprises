@@ -2642,6 +2642,15 @@ export const worker = {
           return errorResponse(`Invoice is already ${invoice.status}. Only Draft invoices can be issued.`);
         }
 
+        // Validate buyer PIN before sequence reservation so the database trigger never surfaces as a raw D1 error.
+        const buyerPincode = String(invoice.buyer_pincode || '').trim();
+        if (!/^[1-9][0-9]{5}$/.test(buyerPincode)) {
+          return errorResponse(
+            'Valid 6-digit buyer PIN code is mandatory for issuance. Edit the Draft invoice, enter the buyer PIN code, save, and issue again.',
+            422
+          );
+        }
+
         // 6. GST AND HSN SAFETY: Never issue an invoice with missing GST classification or HSN
         const invItems = await env.DB.prepare(
           'SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY line_number ASC'
