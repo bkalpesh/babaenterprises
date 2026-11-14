@@ -237,12 +237,14 @@ export interface DBQuotation {
   financial_year?: string;
   quotation_date: string;
   valid_until: string;
-  buyer_name: string;
-  buyer_company: string | null;
+  buyer_name: string; // Legal entity name, same meaning as invoice buyer_name
+  buyer_company: string | null; // Trade / operating name, same meaning as invoice buyer_trade_name
+  buyer_contact_person?: string | null;
   buyer_gstin: string | null;
   buyer_state_code: string;
   buyer_state_name: string;
   buyer_address: string | null;
+  buyer_city?: string | null;
   buyer_pincode?: string | null;
   buyer_phone: string | null;
   buyer_email: string | null;
