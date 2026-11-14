@@ -405,7 +405,7 @@ export function generateQuotationPDF(
       if (quotation.buyer_company) text(quotation.buyer_company, LEFT, y + 28, 8);
       if (quotation.buyer_contact_person) text('Contact: ' + quotation.buyer_contact_person, LEFT, y + 41, 8);
       const addressParts = (quotation.buyer_address || 'Address not provided')
-        .split(/[,\\n]+/).map((part) => part.trim()).filter(Boolean);
+        .split(/[,\n]+/).map((part) => part.trim()).filter(Boolean);
       const addressLines = addressParts.reduce((all: string[], part: string) => all.concat(wrap(part, 58)), [] as string[]);
       const addressTop = y + (quotation.buyer_contact_person ? 54 : (quotation.buyer_company ? 41 : 28));
       addressLines.forEach((v, i) => text(v, LEFT, addressTop + i * 11, 8));
