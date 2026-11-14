@@ -70,10 +70,11 @@ export function generateInvoiceHTML(
   <meta charset="UTF-8">
   <title>Tax Invoice - ${invoice.invoice_number || 'DRAFT'}</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 60mm 10mm 34mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
     .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
+    .invoice-header, .invoice-footer { width: 100%; background: #fff; }
     .tricolor-rule { height: 9px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
     .seller-brand { display: flex; align-items: center; justify-content: flex-start; min-height: 88px; margin-bottom: 2px; }
     .seller-logo { display: block; width: 275px; height: 90px; object-fit: contain; object-position: left center; }
@@ -97,6 +98,8 @@ export function generateInvoiceHTML(
     .items-table th:last-child { border-right: none; }
     .items-table td { padding: 6px 4px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
     .items-table td:last-child { border-right: none; }
+    .items-table thead { display: table-header-group; }
+    .items-table tr, .summary-table, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
     .text-left { text-align: left; }
@@ -116,9 +119,16 @@ export function generateInvoiceHTML(
     .cancelled-watermark { position: absolute; top: 35%; left: 15%; font-size: 80px; color: rgba(220, 38, 38, 0.2); font-weight: 900; transform: rotate(-30deg); text-transform: uppercase; pointer-events: none; }
     
     @media print {
-      body { background: #fff; }
+      html, body { width: 100%; margin: 0; padding: 0; background: #fff; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .no-print { display: none !important; }
-      .invoice-card { border: 1.5px solid #000; }
+      .invoice-card { width: 100%; max-width: none; margin: 0; border: 0; overflow: visible; }
+      .invoice-header { position: fixed; z-index: 20; top: -56mm; left: 0; right: 0; width: 100%; }
+      .invoice-footer { position: fixed; z-index: 20; bottom: -30mm; left: 0; right: 0; width: 100%; }
+      .buyer-table, .items-table, .summary-table { width: 100%; }
+      .items-table thead { display: table-header-group; }
+      .items-table tr, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .cancelled-watermark { position: fixed; }
     }
   </style>
 </head>
@@ -132,11 +142,10 @@ export function generateInvoiceHTML(
   </div>
 
   <div class="invoice-card" style="position: relative;">
-    <div class="tricolor-rule" aria-hidden="true"></div>
-    ${invoice.status === 'Cancelled' ? `<div class="cancelled-watermark">CANCELLED</div>` : ''}
-    
-    <!-- Header -->
-    <table class="header-table">
+    <div class="invoice-header">
+      <div class="tricolor-rule" aria-hidden="true"></div>
+      <!-- Repeated print header -->
+      <table class="header-table">
       <tr>
         <td class="seller-col">
           <div class="seller-brand">
@@ -159,7 +168,9 @@ export function generateInvoiceHTML(
           <div class="meta-line"><span class="bold">Payment Status:</span> ${invoice.payment_status}</div>
         </td>
       </tr>
-    </table>
+      </table>
+    </div>
+    ${invoice.status === 'Cancelled' ? `<div class="cancelled-watermark">CANCELLED</div>` : ''}
 
     <!-- Buyer Details -->
     <table class="buyer-table">
@@ -292,8 +303,9 @@ export function generateInvoiceHTML(
       </tr>
     </table>
 
-    <!-- Footer & Terms -->
-    <table class="footer-table">
+    <!-- Repeated print footer -->
+    <div class="invoice-footer">
+      <table class="footer-table">
       <tr>
         <td class="terms-col">
           <div class="bold" style="color: #102F59; margin-bottom: 2px;">Terms & Conditions:</div>
@@ -310,8 +322,9 @@ export function generateInvoiceHTML(
           </div>
         </td>
       </tr>
-    </table>
-    <div class="tricolor-rule" aria-hidden="true"></div>
+      </table>
+      <div class="tricolor-rule" aria-hidden="true"></div>
+    </div>
   </div>
 </body>
 </html>`;
