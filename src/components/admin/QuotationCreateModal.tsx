@@ -79,9 +79,10 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 
   // Load customer master list and populate initialData if editing
   const loadInitialState = async () => {
+    let customerMaster: Customer[] = [];
     try {
-      const data = await ApiService.getCustomers();
-      setCustomers(data.filter((c) => c.is_active));
+      customerMaster = await ApiService.getCustomers();
+      setCustomers(customerMaster.filter((c) => c.is_active));
     } catch {
       // Offline fallback
     }
@@ -101,6 +102,23 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setBuyerCity(initialData.buyer_city || '');
       setBuyerStateCode(initialData.buyer_state_code || '27');
       setBuyerPincode(initialData.buyer_pincode || '');
+
+      // For legacy quotations, use linked Customer Master data to fill fields the old form did not store.
+      if (isLegacyBuyerRecord && initialData.customer_id) {
+        const masterCustomer = customerMaster.find((c) => c.id === initialData.customer_id);
+        if (masterCustomer) {
+          setBuyerName(masterCustomer.legalName || masterCustomer.legal_name || initialData.buyer_company || initialData.buyer_name || '');
+          setBuyerCompany(masterCustomer.tradeName || masterCustomer.trade_name || '');
+          setBuyerContactPerson(masterCustomer.contactPerson || masterCustomer.contact_person || (initialData.buyer_company && initialData.buyer_name !== initialData.buyer_company ? initialData.buyer_name : ''));
+          setBuyerGstin(initialData.buyer_gstin || masterCustomer.gstin || '');
+          setBuyerAddress(initialData.buyer_address || masterCustomer.billingAddress || masterCustomer.billing_address || '');
+          setBuyerCity(initialData.buyer_city || masterCustomer.city || '');
+          setBuyerStateCode(initialData.buyer_state_code || masterCustomer.stateCode || masterCustomer.state_code || '27');
+          setBuyerPincode(initialData.buyer_pincode || masterCustomer.pincode || '');
+          setBuyerPhone(initialData.buyer_phone || masterCustomer.mobile || '');
+          setBuyerEmail(initialData.buyer_email || masterCustomer.email || '');
+        }
+      }
 
       // Load full items from backend
       try {
