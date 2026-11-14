@@ -87,6 +87,7 @@ export function generateInvoiceHTML(
     .buyer-table { width: 100%; border-bottom: 1.5px solid #0f172a; background: #fff; }
     .buyer-table td { padding: 8px 12px; vertical-align: top; width: 50%; }
     .buyer-table td:first-child { border-right: 1.5px solid #0f172a; }
+    .buyer-address-line { line-height: 1.5; overflow-wrap: anywhere; white-space: normal; margin-bottom: 2px; }
     
     .items-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; }
     .items-table th { background: #102F59; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 6px 4px; text-align: center; border-right: 1px solid #cbd5e1; }
@@ -162,16 +163,16 @@ export function generateInvoiceHTML(
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">BILL TO (BUYER DETAILS):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Cash / Retail Buyer'}</div>
           ${invoice.buyer_trade_name ? `<div>${invoice.buyer_trade_name}</div>` : ''}
-          <div>${invoice.buyer_address || 'Address not specified'}</div>
-          <div>${invoice.buyer_city || ''} ${invoice.buyer_state_name ? invoice.buyer_state_name + ' – ' + (invoice.buyer_pincode || '') : ''}</div>
+          <div class="buyer-address-line">${(invoice.buyer_address || 'Address not specified').split(/[,\\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
+          <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">State:</span> ${invoice.buyer_state_name || 'N/A'} (Code: ${invoice.buyer_state_code || 'N/A'})</div>
           <div><span class="bold">GSTIN:</span> ${invoice.buyer_gstin || 'URP (Unregistered)'}</div>
         </td>
         <td>
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">SHIP TO (DISPATCH DESTINATION):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Same as Bill To'}</div>
-          <div>${invoice.buyer_address || 'Same as Billing Address'}</div>
-          <div>${invoice.buyer_city || ''} ${invoice.buyer_state_name ? invoice.buyer_state_name + ' – ' + (invoice.buyer_pincode || '') : ''}</div>
+          <div class="buyer-address-line">${(invoice.buyer_address || 'Same as Billing Address').split(/[,\\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
+          <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">Place of Supply:</span> ${invoice.place_of_supply || invoice.buyer_state_name || 'Maharashtra (27)'}</div>
         </td>
       </tr>
