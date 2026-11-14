@@ -1675,6 +1675,7 @@ export const worker = {
                 subject: `Quotation ${quote.quotation_number} from BABA ENTERPRISES`,
                 text: `Dear Customer,\n\nPlease find attached quotation ${quote.quotation_number}.\nTotal Amount: Rs. ${(quote.total_amount_paise / 100).toFixed(2)}\n\nBABA ENTERPRISES\nBhosari, Pune`,
                 attachments: [{ filename: pdfFilename, content: pdfBase64 }],
+                html: '<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5"><div style="height:4px;background:linear-gradient(to right,#FF9933 0 33.333%,#FFFFFF 33.333% 66.666%,#138808 66.666% 100%);border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0"></div><p><img src="https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1" alt="BABA ENTERPRISES" width="84" style="display:block;max-width:84px;height:auto;margin:18px 0 10px"></p><p>Dear Customer,</p><p>Please find attached quotation ' + quote.quotation_number + '.</p><p><strong>Total Amount: Rs. ' + (quote.total_amount_paise / 100).toFixed(2) + '</strong></p><p>BABA ENTERPRISES<br>Bhosari, Pune</p><div style="height:4px;background:linear-gradient(to right,#FF9933 0 33.333%,#FFFFFF 33.333% 66.666%,#138808 66.666% 100%);border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0"></div></div>',
               }),
               signal: controller.signal,
             });
