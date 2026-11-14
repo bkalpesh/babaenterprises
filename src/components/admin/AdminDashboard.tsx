@@ -733,7 +733,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* TAB: QUOTATIONS */}
             {activeTab === 'quotations' && (
               <div className="flex-1 p-6 overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-slate-900">
                       Industrial Quotations Desk
@@ -748,7 +748,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setEditingQuotation(null);
                         setIsQuotationModalOpen(true);
                       }}
-                      className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                      className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#064485]"
                     >
                       <Plus className="w-4 h-4" />
                       <span>New Quotation</span>
@@ -756,7 +756,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+                <div className="mb-4 flex items-start rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
                   <span><strong>Statutory Requirement:</strong> Every line item must have a confirmed GST rate (0%, 5%, 12%, 18%, or 28%) and a verified 4-to-8 digit HSN code before a quotation can be dispatched to clients.</span>
                 </div>
 
@@ -908,6 +908,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     No invoices generated yet. Create a Draft Invoice or convert an accepted quotation to begin.
                   </div>
                 ) : (
+                  <>
                   <div className="space-y-3 md:hidden">
                     {invoices.map((inv) => (
                       <article key={inv.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1072,6 +1073,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
             )}
