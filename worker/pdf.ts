@@ -406,7 +406,8 @@ export function generateQuotationPDF(
       const addressParts = (quotation.buyer_address || 'Address not provided')
         .split(/[,\n]+/).map((part) => part.trim()).filter(Boolean);
       const addressLines = addressParts.reduce((all: string[], part: string) => all.concat(wrap(part, 58)), [] as string[]);
-      const locationLines = wrap([quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', '), 58);
+      const locationText = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', ');
+      const locationLines = locationText ? wrap(locationText, 58) : [];
       const addressTop = y + (quotation.buyer_company ? 41 : 28);
       addressLines.forEach((v, i) => text(v, LEFT, addressTop + i * 11, 8));
       locationLines.forEach((v, i) => text(v, LEFT, addressTop + (addressLines.length + i) * 11, 8));
