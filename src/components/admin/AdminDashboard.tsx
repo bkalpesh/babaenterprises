@@ -476,7 +476,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {activeTab === 'enquiries' && (
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                 {/* Left Enquiry List */}
-                <div className="w-full md:w-5/12 border-r border-slate-200 flex flex-col bg-white overflow-hidden">
+                <div className="flex w-full max-h-[42%] shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white md:max-h-none md:w-5/12 md:shrink md:border-b-0 md:border-r">
                   {/* Search and Filters */}
                   <div className="p-4 border-b border-slate-200 space-y-3 bg-slate-50">
                     <div className="relative">
@@ -577,11 +577,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 {/* Right Enquiry Detail View */}
-                <div className="flex-1 bg-white p-6 overflow-y-auto">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white p-3 sm:p-6">
                   {selectedEnquiry ? (
                     <div className="space-y-6 max-w-2xl">
                       {/* Top Action Bar */}
-                      <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+                      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <span className="text-xs font-mono text-slate-400">REFERENCE NUMBER</span>
                           <h3 className="font-heading text-xl font-bold text-[#102F59]">
@@ -748,7 +748,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setEditingQuotation(null);
                         setIsQuotationModalOpen(true);
                       }}
-                      className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#064485]"
+                      className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#064485] sm:w-auto"
                     >
                       <Plus className="w-4 h-4" />
                       <span>New Quotation</span>
@@ -892,7 +892,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* TAB: GST TAX INVOICES */}
             {activeTab === 'invoices' && (
               <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:p-6">
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-slate-900">
                       GST Tax Invoices Master (Prefix: BE/26-27/)
@@ -906,14 +906,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setEditingInvoice(null);
                       setIsInvoiceModalOpen(true);
                     }}
-                    className="px-4 py-2 bg-[#0755A5] hover:bg-[#064485] text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#064485] sm:w-auto"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Draft Invoice</span>
                   </button>
                 </div>
 
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
+                <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
                   <span><strong>Statutory Compliance Requirement:</strong> All invoice line items must have confirmed GST rates and verified 4-to-8 digit HSN codes before final sequence allocation and issuance. Invoices with unconfirmed items cannot be issued.</span>
                 </div>
 
@@ -1095,8 +1095,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* TAB 2: PRODUCTS */}
             {activeTab === 'products' && (
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50/70">
-                <div className="p-5 md:p-7 space-y-6">
-                  <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#102F59] via-[#124477] to-[#0755A5] p-6 md:p-7 text-white shadow-sm">
+                <div className="space-y-5 p-3 sm:p-5 md:p-7 sm:space-y-6">
+                  <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#102F59] via-[#124477] to-[#0755A5] p-4 text-white shadow-sm sm:p-6 md:p-7">
                     <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full border-[28px] border-white/5" />
                     <div className="absolute right-20 -bottom-24 h-48 w-48 rounded-full bg-white/5" />
                     <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1104,7 +1104,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">
                           <Layers className="h-4 w-4" /> Inventory administration
                         </div>
-                        <h3 className="font-heading text-2xl font-bold tracking-tight">Product Catalogue Master</h3>
+                        <h3 className="font-heading text-xl font-bold tracking-tight sm:text-2xl">Product Catalogue Master</h3>
                         <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">
                           Manage your product records, statutory classifications and catalogue availability from one place.
                         </p>
@@ -1273,8 +1273,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 {/* Edit Modal Dialog */}
                 {editingProduct && (
-                  <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto shadow-2xl">
+                  <div className="fixed inset-0 z-[60] flex items-stretch justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4">
+                    <div className="h-[100dvh] max-h-[100dvh] w-full space-y-5 overflow-y-auto bg-white p-3 shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-2xl sm:p-6 md:p-7">
                       <div className="flex items-center justify-between border-b pb-3">
                         <div>
                           <h4 className="font-heading text-lg font-bold text-slate-900">Edit product details</h4>
@@ -1302,7 +1302,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className="text-xs font-semibold text-slate-700 block mb-1">HSN / SAC Code</label>
                           <input
@@ -1505,7 +1505,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 </div>
 
-                <form onSubmit={handleSaveContact} className="space-y-4 bg-white p-6 rounded-xl border border-slate-200">
+                <form onSubmit={handleSaveContact} className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-6">
                   <div>
                     <label className="text-xs font-semibold text-slate-700 block mb-1">Company Name</label>
                     <input
