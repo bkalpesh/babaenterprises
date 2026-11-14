@@ -329,8 +329,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Content Body */}
         {!isAuthenticated ? (
           /* Authentication Screen */
-          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50">
-            <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 shadow-md text-center space-y-6">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto bg-slate-50 p-3 sm:p-6">
+            <div className="w-full max-w-md space-y-5 rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-md sm:space-y-6 sm:p-8">
               <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-xs inline-block max-w-[220px] mx-auto">
                 <img
                   src="/assets/aistudio/Baba_Header_b3cf9ca8.png"
