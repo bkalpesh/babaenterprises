@@ -344,10 +344,10 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in sm:items-center sm:p-4">
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-auto sm:max-h-[94vh] sm:max-w-4xl sm:rounded-xl">
         {/* Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-white sm:px-6 sm:py-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[#0755A5] rounded-lg">
               <Receipt className="w-5 h-5 text-white" />
@@ -370,7 +370,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 pb-8 space-y-5 sm:space-y-6 sm:p-6">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2.5 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -764,19 +764,19 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
+          <div className="sticky bottom-0 -mx-3 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:static sm:mx-0 sm:flex-row sm:justify-end sm:gap-3 sm:border-0 sm:pt-2 sm:px-0">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition"
+              className="min-h-11 w-full rounded-lg px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 text-sm font-semibold text-white bg-[#0755A5] hover:bg-[#064485] rounded-lg transition shadow-sm flex items-center gap-2 disabled:opacity-50"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#064485] disabled:opacity-50 sm:w-auto"
             >
               <Save className="w-4 h-4" />
               {isSubmitting
