@@ -136,6 +136,20 @@ export function generateInvoiceHTML(
       .items-table tbody { display: table-row-group; }
       .items-table tr { break-inside: avoid; page-break-inside: avoid; }
       .summary-table, .summary-table tr, .footer-table, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+      /*
+       * Only invoices that fit on one A4 page receive the adaptive layout.
+       * The item table grows into otherwise unused vertical space; multi-page
+       * invoices retain compact rows and natural page flow.
+       */
+      .invoice-card.single-page {
+        min-height: 273mm;
+        display: flex;
+        flex-direction: column;
+      }
+      .invoice-card.single-page .items-table {
+        flex: 1 1 auto;
+        height: 100%;
+      }
       .cancelled-watermark { position: absolute; }
     }
   </style>
@@ -334,6 +348,20 @@ export function generateInvoiceHTML(
       <div class="tricolor-rule" aria-hidden="true"></div>
     </div>
   </div>
+  <script>
+    // Expand only genuinely single-page invoices to use the available A4 height.
+    // Multi-page invoices keep compact rows and normal pagination.
+    window.addEventListener('beforeprint', () => {
+      const card = document.querySelector('.invoice-card');
+      const rows = document.querySelectorAll('.items-table tbody tr');
+      if (!card) return;
+      card.classList.remove('single-page');
+      const printablePageHeight = (273 / 25.4) * 96;
+      if (card.scrollHeight <= printablePageHeight && rows.length > 0) {
+        card.classList.add('single-page');
+      }
+    });
+  </script>
 </body>
 </html>`;
 }
