@@ -132,13 +132,13 @@ export const CustomerManagement: React.FC = () => {
       {/* Notifications */}
       {notification && (
         <div
-          className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
+          className={`flex flex-col gap-3 rounded-xl border p-3 transition-all sm:flex-row sm:items-center sm:justify-between sm:p-4 ${
             notification.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-red-50 border-red-200 text-red-800'
           }`}
         >
-          <div className="flex items-center gap-2.5 text-sm font-medium">
+          <div className="flex min-w-0 items-center gap-2.5 text-sm font-medium">
             {notification.type === 'success' ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
             ) : (
@@ -189,7 +189,7 @@ export const CustomerManagement: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
           <Filter className="w-4 h-4 text-slate-400 flex-shrink-0 ml-1" />
           {(
             [
