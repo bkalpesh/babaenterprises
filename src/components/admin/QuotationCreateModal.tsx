@@ -49,10 +49,12 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   // Buyer Form Details (autofilled from customer, can be edited for transaction override)
-  const [buyerName, setBuyerName] = useState('');
-  const [buyerCompany, setBuyerCompany] = useState('');
+  const [buyerName, setBuyerName] = useState(''); // Legal entity name, aligned with invoice buyer_name
+  const [buyerCompany, setBuyerCompany] = useState(''); // Trade / operating name
+  const [buyerContactPerson, setBuyerContactPerson] = useState('');
   const [buyerGstin, setBuyerGstin] = useState('');
   const [buyerAddress, setBuyerAddress] = useState('');
+  const [buyerCity, setBuyerCity] = useState('');
   const [buyerStateCode, setBuyerStateCode] = useState('27');
   const [buyerPincode, setBuyerPincode] = useState('');
 
@@ -86,8 +88,10 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setSelectedCustomerId(initialData.customer_id || '');
       setBuyerName(initialData.buyer_name || '');
       setBuyerCompany(initialData.buyer_company || '');
+      setBuyerContactPerson(initialData.buyer_contact_person || '');
       setBuyerGstin(initialData.buyer_gstin || '');
       setBuyerAddress(initialData.buyer_address || '');
+      setBuyerCity(initialData.buyer_city || '');
       setBuyerStateCode(initialData.buyer_state_code || '27');
       setBuyerPincode(initialData.buyer_pincode || '');
 
@@ -116,8 +120,10 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
       setSelectedCustomerId('');
       setBuyerName('');
       setBuyerCompany('');
+      setBuyerContactPerson('');
       setBuyerGstin('');
       setBuyerAddress('');
+      setBuyerCity('');
       setBuyerStateCode('27');
       setBuyerPincode('');
       setItems([
@@ -145,10 +151,12 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     setSelectedCustomerId(customerId);
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
-      setBuyerName(cust.contactPerson || cust.contact_person || cust.legalName || cust.legal_name || '');
-      setBuyerCompany(cust.legalName || cust.legal_name || '');
+      setBuyerName(cust.legalName || cust.legal_name || '');
+      setBuyerCompany(cust.tradeName || cust.trade_name || '');
+      setBuyerContactPerson(cust.contactPerson || cust.contact_person || '');
       setBuyerGstin(cust.gstin || '');
       setBuyerAddress(cust.billingAddress || cust.billing_address || '');
+      setBuyerCity(cust.city || '');
       setBuyerStateCode(cust.stateCode || cust.state_code || '27');
       setBuyerPincode(cust.pincode || '');
     }
@@ -269,8 +277,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    if (!buyerCompany.trim()) {
-      setError('Buyer Company Name is mandatory.');
+    if (!buyerName.trim()) {
+      setError('Buyer Legal Name is mandatory.');
       return;
     }
 
@@ -299,9 +307,11 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     try {
       const payload = {
         customer_id: selectedCustomerId || undefined,
-        buyer_name: buyerName.trim() || buyerCompany.trim(),
-        buyer_company: buyerCompany.trim(),
+        buyer_name: buyerName.trim(),
+        buyer_company: buyerCompany.trim() || undefined,
+        buyer_contact_person: buyerContactPerson.trim() || undefined,
         buyer_address: buyerAddress.trim() || undefined,
+        buyer_city: buyerCity.trim() || undefined,
         buyer_state_name: buyerState?.name || 'Maharashtra',
         buyer_state_code: buyerStateCode,
         buyer_pincode: buyerPincode.trim() || undefined,
@@ -411,73 +421,42 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               </select>
             </div>
 
-            {/* Buyer Details Grid */}
+            {/* Buyer Details: field names and semantics aligned with InvoiceCreateModal */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Buyer Company Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={buyerCompany}
-                  onChange={(e) => setBuyerCompany(e.target.value)}
-                  placeholder="e.g. Bharat Forge Limited"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
-                />
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Buyer Legal Name <span className="text-red-500">*</span></label>
+                <input type="text" required value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="e.g. Rajesh Kulkarni" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
               </div>
-
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Buyer GSTIN (Leave empty if B2C / Unregistered)
-                </label>
-                <input
-                  type="text"
-                  value={buyerGstin}
-                  onChange={(e) => setBuyerGstin(e.target.value.toUpperCase())}
-                  placeholder="e.g. 27AAACB2026R1Z9"
-                  className="w-full px-3 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
-                />
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Trade / Operating Name</label>
+                <input type="text" value={buyerCompany} onChange={(e) => setBuyerCompany(e.target.value)} placeholder="e.g. Bharat Forge Limited" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
               </div>
-
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Buyer GSTIN (optional for unregistered buyers)</label>
+                <input type="text" value={buyerGstin} onChange={(e) => setBuyerGstin(e.target.value.toUpperCase())} placeholder="e.g. 27AAACB2026R1Z9" className="w-full px-3 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Person</label>
-                <input
-                  type="text"
-                  value={buyerName}
-                  onChange={(e) => setBuyerName(e.target.value)}
-                  placeholder="e.g. Mr. Rajesh Kulkarni"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
-                />
+                <input type="text" value={buyerContactPerson} onChange={(e) => setBuyerContactPerson(e.target.value)} placeholder="e.g. Mr. Rajesh Kulkarni" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
               </div>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Billing / Delivery Address</label>
-                <input
-                  type="text"
-                  value={buyerAddress}
-                  onChange={(e) => setBuyerAddress(e.target.value)}
-                  placeholder="e.g. Plot No. 24, Mundhwa Industrial Area, Pune"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
-                />
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Delivery / Factory Address</label>
+                <input type="text" value={buyerAddress} onChange={(e) => setBuyerAddress(e.target.value)} placeholder="Street, building, industrial area" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
               </div>
-
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Place of Supply / State <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={buyerStateCode}
-                  onChange={(e) => setBuyerStateCode(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
-                >
-                  {INDIAN_STATES.map((st) => (
-                    <option key={st.code} value={st.code}>
-                      {st.code} - {st.name}
-                    </option>
-                  ))}
+                <label className="block text-xs font-semibold text-slate-700 mb-1">City</label>
+                <input type="text" value={buyerCity} onChange={(e) => setBuyerCity(e.target.value)} placeholder="e.g. Pune" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Buyer PIN Code</label>
+                <input type="text" inputMode="numeric" maxLength={6} value={buyerPincode} onChange={(e) => setBuyerPincode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit PIN" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Place of Supply / State <span className="text-red-500">*</span></label>
+                <select value={buyerStateCode} onChange={(e) => setBuyerStateCode(e.target.value)} className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white">
+                  {INDIAN_STATES.map((st) => <option key={st.code} value={st.code}>{st.code} - {st.name}</option>)}
                 </select>
               </div>
             </div>
