@@ -1151,7 +1151,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <p className="mt-1 text-xs text-slate-500">No product records were returned from the database.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="divide-y divide-slate-100">
                         {products.filter((prod) => {
                           const active = Boolean(prod.isActive ?? prod.is_active ?? true);
                           const statusMatches = productStatusFilter === 'all' || (productStatusFilter === 'active' ? active : !active);
@@ -1223,7 +1223,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Edit Modal Dialog */}
                 {editingProduct && (
                   <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto shadow-2xl">
                       <div className="flex items-center justify-between border-b pb-3">
                         <div>
                           <h4 className="font-heading text-lg font-bold text-slate-900">Edit product details</h4>\n                          <p className="mt-1 text-xs text-slate-500">Update pricing and statutory details. Changes are saved to the live catalogue database.</p>
@@ -1259,7 +1259,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             value={editingProduct.hsnCode || editingProduct.hsn_code || ''}
                             onChange={(e) => setEditingProduct({ ...editingProduct, hsnCode: e.target.value, hsn_code: e.target.value })}
                             placeholder="e.g. 40169990"
-                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
+                            className="w-full min-h-11 px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-[#0755A5]"
                           />
                         </div>
 
