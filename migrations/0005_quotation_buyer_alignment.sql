@@ -9,3 +9,6 @@ UPDATE quotations
 SET buyer_contact_person = NULLIF(TRIM(buyer_name), ''),
     buyer_name = COALESCE(NULLIF(TRIM(buyer_company), ''), buyer_name),
     buyer_company = NULL;
+
+-- Force previously cached quotation PDFs to be regenerated with the aligned buyer fields.
+UPDATE quotations SET pdf_r2_key = NULL, pdf_generated_at = NULL;
