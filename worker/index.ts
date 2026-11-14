@@ -168,6 +168,47 @@ function errorResponse(message: string, status: number = 400): Response {
   return jsonResponse({ success: false, error: message }, status);
 }
 
+/**
+ * Convert database trigger/constraint failures into actionable messages for
+ * everyday users. Keep the database rules authoritative; this only changes
+ * how a rejected operation is explained in the UI.
+ */
+function friendlyConstraintError(error: any): string | null {
+  const raw = String(error?.message || error || '');
+  if (!/SQLITE_CONSTRAINT|D1_ERROR|ERR_[A-Z_]+/.test(raw)) return null;
+  const code = raw.match(/ERR_[A-Z_]+/)?.[0] || '';
+
+  if (code === 'ERR_UNCONFIRMED_GST_RATE') {
+    return 'GST rate needs administrator confirmation.\n\nHow to fix:\n1. Open Admin Dashboard → Products / Catalogue.\n2. Find each product used in this quotation or invoice.\n3. Ask an administrator to verify and save the correct GST rate.\n4. Reopen the Draft document and check its line items.\n5. Save again, then retry dispatch or issuance.\n\nThe document has not been issued or dispatched.';
+  }
+  if (code === 'ERR_MANDATORY_HSN_CODE') {
+    return 'A valid HSN code is missing for one or more items.\n\nHow to fix:\n1. Open Admin Dashboard → Products / Catalogue.\n2. Find the affected product and enter its verified 4–8 digit HSN code.\n3. Save the product, reopen the Draft document, and verify the item details.\n4. Save and retry.\n\nIf you are unsure of the correct HSN code, ask your administrator or tax adviser. The system will not guess it.';
+  }
+  if (code === 'ERR_NO_LINE_ITEMS') {
+    return 'This document has no line items.\n\nHow to fix:\n1. Open the Draft quotation or invoice.\n2. Add at least one product or service line.\n3. Enter its description, quantity and unit price.\n4. Save and retry.';
+  }
+  if (code.startsWith('ERR_MANDATORY_BUYER_')) {
+    const field = code.includes('PINCODE') ? 'a valid 6-digit buyer PIN code' : code.includes('ADDRESS') ? 'the buyer billing address' : code.includes('STATE') ? 'the buyer state / state code' : 'the buyer legal name';
+    return `Buyer details are incomplete: ${field} is required.\n\nHow to fix:\n1. Open the Draft document and choose Edit.\n2. Complete ${field}.\n3. Save the Draft and retry.\n\nNo official document number has been issued.`;
+  }
+  if (code.startsWith('ERR_FINANCIAL_') || code === 'ERR_ITEM_TAX_CALCULATION_MISMATCH') {
+    return 'The document totals do not match the line-item tax calculations.\n\nHow to fix:\n1. Reopen the Draft document.\n2. Check each item’s quantity, unit price, discount, GST rate and HSN code.\n3. Save the Draft so the system recalculates the totals.\n4. Retry the action.\n\nIf the message appears again, stop and contact the administrator. Do not change totals manually.';
+  }
+  if (code.includes('IMMUTABLE') || code.includes('LOCKED') || code.includes('LEGAL_RECORD') || code.includes('FINAL') || code === 'ERR_ITEMS_LOCKED' || code === 'ERR_CANCELLED_INVOICE_FROZEN') {
+    return 'This record is locked and cannot be changed or deleted because of its current status.\n\nHow to proceed:\n1. Return to the document list and check its status.\n2. If it has already been sent, accepted, issued, converted or cancelled, keep it as the official record.\n3. If a correction is needed, create a new Draft document and enter the corrected details.\n\nThe existing record has not been altered.';
+  }
+  if (code.includes('DISPATCH') || code.includes('ACCEPTED_DISPATCH')) {
+    return 'The quotation dispatch could not be completed because the dispatch details or confirmation are incomplete.\n\nHow to fix:\n1. Reopen the quotation and verify the recipient details.\n2. Check the dispatch status and any provider confirmation.\n3. Retry only after the dispatch details are correct.\n4. If it remains blocked, contact the administrator.\n\nDo not mark the quotation as Sent unless dispatch is confirmed.';
+  }
+  if (code.includes('SEQUENCE') || code.includes('FINANCIAL_YEAR_MISMATCH')) {
+    return 'The document number could not be allocated because the numbering sequence needs administrator attention.\n\nPlease do not retry repeatedly or edit the number. Contact the administrator to check the financial-year sequence. The document remains unissued.';
+  }
+  if (/SQLITE_CONSTRAINT|D1_ERROR/.test(raw)) {
+    return 'This action was blocked because the document does not meet a required business rule.\n\nHow to fix:\n1. Check that all required buyer details and item fields are complete.\n2. Verify product GST rates and HSN codes with an administrator.\n3. Confirm the document is still in Draft status before editing or issuing.\n4. Save your corrections and retry.\n\nIf it still fails, contact the administrator and share the document number and time of the error.';
+  }
+  return null;
+}
+
 async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader) return false;
@@ -2813,6 +2854,13 @@ export const worker = {
         headers: { 'Content-Type': 'text/plain' },
       });
     } catch (err: any) {
+      const friendlyError = friendlyConstraintError(err);
+      if (friendlyError) {
+        // Constraint failures are expected validation outcomes, not server crashes.
+        // Log the technical detail for administrators while returning safe guidance.
+        console.error('Database constraint prevented operation:', err?.message || err);
+        return jsonResponse({ success: false, error: friendlyError }, 422);
+      }
       return jsonResponse({ success: false, error: err.message || 'Internal Server Error' }, 500);
     }
   },
