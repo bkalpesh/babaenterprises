@@ -516,7 +516,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-white border border-slate-200">
+            <div className="flex flex-col items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-600">
                 Tax Jurisdiction:{' '}
                 <strong>{buyerState?.name || 'Maharashtra'}</strong> (Code {buyerStateCode})
