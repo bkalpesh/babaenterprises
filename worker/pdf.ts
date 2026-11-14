@@ -96,7 +96,7 @@ export function generateInvoiceHTML(
     .items-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; }
     .items-table th { background: #102F59; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 6px 4px; text-align: center; border-right: 1px solid #cbd5e1; }
     .items-table th:last-child { border-right: none; }
-    .items-table td { padding: 6px 4px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+    .items-table td { padding: 6px 4px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #e2e8f0; font-size: 10px; vertical-align: top; }
     .items-table td:last-child { border-right: none; }
     .items-table thead { display: table-header-group; }
     .items-table tr, .summary-table, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
