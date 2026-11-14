@@ -74,9 +74,9 @@ export function generateInvoiceHTML(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
     .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
-    .tricolor-rule { height: 7px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
+    .tricolor-rule { height: 9px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
     .seller-brand { display: flex; align-items: center; justify-content: flex-start; min-height: 88px; margin-bottom: 2px; }
-    .seller-logo { display: block; width: 150px; height: 82px; object-fit: contain; object-position: left center; }
+    .seller-logo { display: block; width: 275px; height: 90px; object-fit: contain; object-position: left center; }
     .header-table { width: 100%; border-bottom: 1.5px solid #0f172a; }
     .header-table td { padding: 8px 12px; vertical-align: top; }
     .seller-col { width: 60%; border-right: 1.5px solid #0f172a; }
