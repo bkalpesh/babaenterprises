@@ -524,7 +524,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 
           {/* Section 2: Multi-Line Items */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="hidden md:flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-[#0755A5]" />
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
@@ -541,7 +541,9 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
               </button>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <ResponsiveLineItemsEditor items={items} availableProducts={availableProducts || []} onAdd={addItemRow} onUpdate={updateItem} onProductSelect={handleProductSelect} onRemove={removeItemRow} documentLabel="Quotation" />
+
+            <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
