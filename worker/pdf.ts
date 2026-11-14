@@ -128,7 +128,6 @@ export function generateInvoiceHTML(
       .buyer-table, .items-table, .summary-table { width: 100%; }
       .items-table thead { display: table-header-group; }
       .items-table tr, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
-      .cancelled-watermark { position: fixed; }
     }
   </style>
 </head>
