@@ -877,7 +877,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB: GST TAX INVOICES */}
             {activeTab === 'invoices' && (
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="flex-1 min-h-0 w-full overflow-y-auto overscroll-contain px-3 py-4 sm:p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-slate-900">
@@ -908,8 +908,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     No invoices generated yet. Create a Draft Invoice or convert an accepted quotation to begin.
                   </div>
                 ) : (
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-                    <table className="w-full text-left text-xs">
+                  <div className="space-y-3 md:hidden">
+                    {invoices.map((inv) => (
+                      <article key={inv.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Invoice number</p>
+                            {inv.status === 'Draft' ? (
+                              <button type="button" onClick={() => { setEditingInvoice(inv); setIsInvoiceModalOpen(true); }} className="mt-1 break-all text-left text-sm font-bold text-[#0755A5] underline decoration-dotted underline-offset-4">
+                                {inv.invoice_number || 'DRAFT — Open to edit'}
+                              </button>
+                            ) : (
+                              <p className="mt-1 break-all text-sm font-bold text-[#102F59]">{inv.invoice_number || '—'}</p>
+                            )}
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${inv.status === 'Issued' ? 'bg-blue-100 text-[#0755A5]' : inv.status === 'Cancelled' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>{inv.status}</span>
+                        </div>
+                        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-xs">
+                          <div className="flex justify-between gap-3"><span className="text-slate-500">Date</span><span className="text-right font-medium text-slate-800">{inv.invoice_date || 'Pending Issuance'}</span></div>
+                          <div className="flex justify-between gap-3"><span className="text-slate-500">Buyer</span><span className="max-w-[65%] text-right font-semibold text-slate-900">{inv.buyer_name || 'N/A'}</span></div>
+                          <div className="flex justify-between gap-3"><span className="text-slate-500">GSTIN</span><span className="text-right font-mono text-slate-700">{inv.buyer_gstin || 'URP (B2C)'}</span></div>
+                          <div className="flex justify-between gap-3"><span className="text-slate-500">Taxable amount</span><span className="font-mono text-slate-800">₹{(inv.taxable_amount_paise / 100).toFixed(2)}</span></div>
+                          <div className="flex justify-between gap-3 border-t border-slate-100 pt-2"><span className="font-semibold text-slate-600">Invoice total</span><span className="font-mono font-bold text-slate-900">₹{(inv.total_invoice_amount_paise / 100).toFixed(2)}</span></div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                          {inv.status === 'Draft' && (
+                            <button onClick={async () => {
+                              if (window.confirm('Issue this invoice? This will allocate the next official sequential number (BE/26-27/XXXX) and permanently lock financial details.')) {
+                                try { const res = await ApiService.issueInvoice(inv.id); if (res.success) { alert(`Invoice issued successfully: ${res.invoice.invoice_number}`); loadAllData(); } else { alert(`Issuance Error: ${res.error}`); } }
+                                catch (err: any) { alert(`Issuance failed: ${err.message}`); }
+                              }
+                            }} className="min-h-10 rounded-lg bg-[#102F59] px-4 py-2 text-xs font-semibold text-white">Issue Invoice</button>
+                          )}
+                          {inv.status === 'Issued' && (
+                            <>
+                              <button onClick={async () => { try { await ApiService.printInvoice(inv.id); } catch (err: any) { alert(`Failed to load invoice for printing: ${err.message}`); } }} className="min-h-10 rounded-lg bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700"><Printer className="mr-1 inline h-3.5 w-3.5" />Print</button>
+                              <button onClick={async () => { const reason = window.prompt('Enter mandatory cancellation reason (min 5 characters):'); if (!reason || reason.trim().length < 5) { alert('Cancellation cancelled: Reason must be at least 5 characters.'); return; } const res = await ApiService.cancelInvoice(inv.id, reason.trim()); if (res.success) { alert('Invoice cancelled and permanently frozen in audit log.'); loadAllData(); } else { alert(`Error: ${res.error}`); } }} className="min-h-10 rounded-lg bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">Cancel</button>
+                            </>
+                          )}
+                          {inv.status === 'Cancelled' && <span className="py-2 text-xs italic text-red-600">Frozen Record</span>}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="hidden md:block bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+                    <table className="w-full min-w-[900px] text-left text-xs">
                       <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                         <tr>
                           <th className="p-3">Invoice Number</th>
@@ -926,7 +969,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {invoices.map((inv) => (
                           <tr key={inv.id} className="hover:bg-slate-50/80">
                             <td className="p-3 font-mono font-bold text-[#102F59]">
-                              {inv.invoice_number || 'DRAFT (Unissued)'}
+                              {inv.status === 'Draft' ? (
+                                <button type="button" onClick={() => { setEditingInvoice(inv); setIsInvoiceModalOpen(true); }} className="text-left text-[#0755A5] underline decoration-dotted underline-offset-4 hover:text-[#102F59] focus:outline-none focus:ring-2 focus:ring-blue-200 rounded" title="Open draft invoice for editing">
+                                  {inv.invoice_number || 'DRAFT (Open to edit)'}
+                                </button>
+                              ) : (inv.invoice_number || '—')}
                             </td>
                             <td className="p-3 text-slate-500">{inv.invoice_date || 'Pending Issuance'}</td>
                             <td className="p-3">
@@ -951,18 +998,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className="flex items-center justify-center gap-1.5">
                                 {inv.status === 'Draft' && (
                                   <>
-                                    <button
-                                      onClick={() => {
-                                        setEditingInvoice(inv);
-                                        setIsInvoiceModalOpen(true);
-                                      }}
-                                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
-                                      title="Edit Draft Invoice"
-                                    >
-                                      <Edit2 className="w-3 h-3" />
-                                      <span>Edit</span>
-                                    </button>
-
                                     <button
                                       onClick={async () => {
                                         if (window.confirm('Issue this invoice? This will allocate the next official sequential number (BE/26-27/XXXX) and permanently lock financial details.')) {
