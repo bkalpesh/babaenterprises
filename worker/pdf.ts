@@ -146,9 +146,14 @@ export function generateInvoiceHTML(
         display: flex;
         flex-direction: column;
       }
+      /* Keep line items compact; put any spare page height after the table. */
       .invoice-card.single-page .items-table {
+        flex: 0 0 auto;
+        height: auto;
+      }
+      .invoice-card.single-page .invoice-fill-space {
         flex: 1 1 auto;
-        height: 100%;
+        min-height: 12mm;
       }
       .cancelled-watermark { position: absolute; }
     }
@@ -266,6 +271,9 @@ export function generateInvoiceHTML(
         `).join('')}
       </tbody>
     </table>
+
+    <!-- Flexible whitespace belongs after the item rows, never inside them. -->
+    <div class="invoice-fill-space" aria-hidden="true"></div>
 
     <!-- Summary & Totals -->
     <table class="summary-table">
