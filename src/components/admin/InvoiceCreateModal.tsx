@@ -345,7 +345,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in sm:items-center sm:p-4">
-      <div className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-auto sm:max-h-[94vh] sm:max-w-4xl sm:rounded-xl">
+      <div className="flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-[92vh] sm:max-h-[94vh] sm:max-w-4xl sm:rounded-xl">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-white sm:px-6 sm:py-4">
           <div className="flex items-center gap-3">
