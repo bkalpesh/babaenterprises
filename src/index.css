@@ -78,3 +78,27 @@ html[lang="mr"] .font-display {
     color: black !important;
   }
 }
+
+
+/* Admin portal: touch-friendly mobile controls and native momentum scrolling */
+@media (max-width: 767px) {
+  .admin-portal-shell {
+    overscroll-behavior: contain;
+  }
+
+  .admin-portal-shell nav,
+  .admin-portal-shell [class*="overflow-x-auto"] {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-portal-shell input:not([type="checkbox"]):not([type="radio"]),
+  .admin-portal-shell select,
+  .admin-portal-shell textarea {
+    min-height: 44px;
+    font-size: 16px !important;
+  }
+
+  .admin-portal-shell button {
+    touch-action: manipulation;
+  }
+}
