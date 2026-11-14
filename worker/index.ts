@@ -858,12 +858,12 @@ export const worker = {
                 INSERT INTO quotations (
                   id, quotation_number, quotation_prefix, sequence_number, financial_year,
                   quotation_date, valid_until, buyer_name, buyer_company,
-                  buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
+                  buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_contact_person, buyer_phone, buyer_email,
                   status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes,
                   is_interstate, customer_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 quoteId,
                 quoteNumber,
@@ -878,6 +878,8 @@ export const worker = {
                 buyerStateCode,
                 buyerStateName,
                 b.buyer_address || null,
+                b.buyer_city || null,
+                b.buyer_contact_person || null,
                 b.buyer_phone || null,
                 b.buyer_email || null,
                 totals.subtotalGrossPaise,
@@ -952,11 +954,11 @@ export const worker = {
                   INSERT INTO quotations (
                     id, quotation_number, quotation_prefix, sequence_number, financial_year,
                     quotation_date, valid_until, buyer_name, buyer_company,
-                    buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_phone, buyer_email,
+                    buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_contact_person, buyer_phone, buyer_email,
                     status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                     cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                     round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
                   quoteId,
                   quoteNumber,
@@ -971,6 +973,8 @@ export const worker = {
                   buyerStateCode,
                   buyerStateName,
                   b.buyer_address || null,
+                  b.buyer_city || null,
+                  b.buyer_contact_person || null,
                   b.buyer_phone || null,
                   b.buyer_email || null,
                   totals.subtotalGrossPaise,
@@ -1167,6 +1171,8 @@ export const worker = {
               buyer_state_code = ?,
               buyer_state_name = ?,
               buyer_address = ?,
+              buyer_city = ?,
+              buyer_contact_person = ?,
               buyer_pincode = ?,
               buyer_phone = ?,
               buyer_email = ?,
@@ -1195,6 +1201,8 @@ export const worker = {
             buyerStateCode,
             buyerStateName,
             b.buyer_address || b.buyerAddress || null,
+            b.buyer_city || b.buyerCity || null,
+            b.buyer_contact_person || b.buyerContactPerson || null,
             b.buyer_pincode || b.buyerPincode || null,
             b.buyer_phone || b.buyerPhone || null,
             b.buyer_email || b.buyerEmail || null,
@@ -2105,12 +2113,12 @@ export const worker = {
             env.DB.prepare(`
               INSERT INTO invoices (
                 id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-                buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
+                buyer_name, buyer_trade_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
                 buyer_gstin, is_interstate, place_of_supply, reference_quotation_id, customer_id,
                 subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                 cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                 apply_round_off, round_off_paise, total_invoice_amount_paise
-              ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
               invoiceId,
               targetFY,
@@ -2120,6 +2128,7 @@ export const worker = {
               quote.buyer_name,
               quote.buyer_company,
               quote.buyer_address,
+              quote.buyer_city || null,
               quote.buyer_state_name,
               quote.buyer_state_code,
               quote.buyer_pincode || null,
@@ -2183,7 +2192,7 @@ export const worker = {
               env.DB.prepare(`
                 INSERT INTO invoices (
                   id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-                  buyer_name, buyer_trade_name, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode,
+                  buyer_name, buyer_trade_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
                   buyer_gstin, is_interstate, place_of_supply, reference_quotation_id,
                   subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
@@ -2198,6 +2207,7 @@ export const worker = {
                 quote.buyer_name,
                 quote.buyer_company,
                 quote.buyer_address,
+                quote.buyer_city || null,
                 quote.buyer_state_name,
                 quote.buyer_state_code,
                 quote.buyer_pincode || null,
@@ -2324,7 +2334,7 @@ export const worker = {
                   subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   apply_round_off, round_off_paise, total_invoice_amount_paise
-                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 invoiceId,
                 targetFY,
