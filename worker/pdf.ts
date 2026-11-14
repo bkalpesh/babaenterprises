@@ -74,6 +74,10 @@ export function generateInvoiceHTML(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
     .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
+    .tricolor-rule { height: 3px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+    .seller-brand { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 2px; }
+    .seller-logo { width: 54px; height: 54px; object-fit: contain; flex: 0 0 54px; }
+    .seller-brand-copy { min-width: 0; }
     .header-table { width: 100%; border-bottom: 1.5px solid #0f172a; }
     .header-table td { padding: 8px 12px; vertical-align: top; }
     .seller-col { width: 60%; border-right: 1.5px solid #0f172a; }
@@ -129,14 +133,20 @@ export function generateInvoiceHTML(
   </div>
 
   <div class="invoice-card" style="position: relative;">
+    <div class="tricolor-rule" aria-hidden="true"></div>
     ${invoice.status === 'Cancelled' ? `<div class="cancelled-watermark">CANCELLED</div>` : ''}
     
     <!-- Header -->
     <table class="header-table">
       <tr>
         <td class="seller-col">
-          <h1>${settings.legal_name}</h1>
-          <div class="tagline">Industrial Rubber & Plastic Components Specialist</div>
+          <div class="seller-brand">
+            <img class="seller-logo" src="https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1" alt="BABA ENTERPRISES logo">
+            <div class="seller-brand-copy">
+              <h1>${settings.legal_name}</h1>
+              <div class="tagline">Industrial Rubber & Plastic Components Specialist</div>
+            </div>
+          </div>
           <div class="meta-line">${settings.address_line1}, ${settings.address_line2}</div>
           <div class="meta-line">${settings.city} – ${settings.pincode}, ${settings.state_name}, India</div>
           <div class="meta-line"><span class="bold">GSTIN:</span> ${settings.gstin} | <span class="bold">PAN:</span> ${settings.pan}</div>
@@ -306,6 +316,7 @@ export function generateInvoiceHTML(
         </td>
       </tr>
     </table>
+    <div class="tricolor-rule" aria-hidden="true"></div>
   </div>
 </body>
 </html>`;
