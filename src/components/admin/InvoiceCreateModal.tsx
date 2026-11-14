@@ -17,6 +17,7 @@ import { Customer, Product } from '../../types';
 import { ApiService, StagingInvoice } from '../../services/apiService';
 import { INDIAN_STATES, getStateByCode } from '../../data/indianStates';
 import { CustomerModal } from './CustomerModal';
+import { ResponsiveLineItemsEditor } from './ResponsiveLineItemsEditor';
 
 interface InvoiceLineItemRow {
   productId?: string;
