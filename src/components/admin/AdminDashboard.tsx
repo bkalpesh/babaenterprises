@@ -1226,7 +1226,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto shadow-2xl">
                       <div className="flex items-center justify-between border-b pb-3">
                         <div>
-                          <h4 className="font-heading text-lg font-bold text-slate-900">Edit product details</h4>\n                          <p className="mt-1 text-xs text-slate-500">Update pricing and statutory details. Changes are saved to the live catalogue database.</p>
+                          <h4 className="font-heading text-lg font-bold text-slate-900">Edit product details</h4>
+                          <p className="mt-1 text-xs text-slate-500">Update pricing and statutory details. Changes are saved to the live catalogue database.</p>
                           <p className="text-[11px] text-slate-500">ID: {editingProduct.id}</p>
                         </div>
                         <button onClick={() => setEditingProduct(null)}>
