@@ -230,6 +230,31 @@ export const CustomerManagement: React.FC = () => {
             </p>
           </div>
         ) : (
+          <div className="space-y-3 p-3 md:hidden">
+            {filteredCustomers.map((cust) => (
+              <article key={cust.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="break-words text-sm font-bold text-slate-900">{cust.legal_name}</h3>
+                    {cust.trade_name && <p className="mt-0.5 break-words text-xs text-slate-500">{cust.trade_name}</p>}
+                  </div>
+                  <button onClick={() => handleToggleActive(cust)} className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${cust.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{cust.is_active ? 'Active' : 'Inactive'}</button>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 text-xs">
+                  <div><span className="text-slate-500">GSTIN: </span><span className="break-all font-mono font-semibold text-slate-800">{cust.gstin || 'Unregistered / B2C'}</span></div>
+                  <div><span className="text-slate-500">Location: </span><span className="text-slate-800">{cust.city || '—'}, {cust.state || 'Maharashtra'} {cust.pincode ? `• ${cust.pincode}` : ''}</span></div>
+                  {cust.billing_address && <div className="break-words text-slate-600">{cust.billing_address}</div>}
+                  <div><span className="text-slate-500">Contact: </span><span className="text-slate-800">{cust.contact_person || '—'}</span></div>
+                  {cust.mobile && <div><span className="text-slate-500">Phone: </span><a className="font-medium text-[#0755A5]" href={`tel:${cust.mobile}`}>{cust.mobile}</a></div>}
+                  {cust.email && <div className="break-all"><span className="text-slate-500">Email: </span><a className="font-medium text-[#0755A5]" href={`mailto:${cust.email}`}>{cust.email}</a></div>}
+                </div>
+                <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+                  <button onClick={() => handleEditCustomer(cust)} className="min-h-10 flex-1 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-[#0755A5]">Edit customer</button>
+                  <button onClick={() => handleDelete(cust)} className="min-h-10 rounded-lg bg-red-50 px-3 text-xs font-semibold text-red-700">Deactivate</button>
+                </div>
+              </article>
+            ))}
+          </div>
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -347,7 +372,7 @@ export const CustomerManagement: React.FC = () => {
           </div>
         )}
 
-        <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex items-center justify-between">
+        <div className="flex flex-col gap-1 border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span>
             Showing {filteredCustomers.length} of {customers.length} total customer profiles
           </span>
