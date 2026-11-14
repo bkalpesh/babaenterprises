@@ -6,7 +6,12 @@ ALTER TABLE quotations ADD COLUMN buyer_city TEXT DEFAULT NULL;
 ALTER TABLE quotations ADD COLUMN buyer_contact_person TEXT DEFAULT NULL;
 
 UPDATE quotations
-SET buyer_contact_person = NULLIF(TRIM(buyer_name), ''),
+SET buyer_contact_person = CASE
+      WHEN NULLIF(TRIM(buyer_name), '') IS NOT NULL
+       AND NULLIF(TRIM(buyer_name), '') <> NULLIF(TRIM(buyer_company), '')
+      THEN NULLIF(TRIM(buyer_name), '')
+      ELSE NULL
+    END,
     buyer_name = COALESCE(NULLIF(TRIM(buyer_company), ''), buyer_name),
     buyer_company = NULL;
 
