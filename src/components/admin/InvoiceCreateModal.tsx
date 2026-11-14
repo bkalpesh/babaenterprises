@@ -270,6 +270,12 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
       return;
     }
 
+    const normalizedBuyerPincode = buyerPincode.trim();
+    if (normalizedBuyerPincode && !/^[1-9][0-9]{5}$/.test(normalizedBuyerPincode)) {
+      setError('Buyer PIN code must be a valid 6-digit Indian PIN code.');
+      return;
+    }
+
     if (items.length === 0) {
       setError('At least one item is required.');
       return;
@@ -471,6 +477,24 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
                   placeholder="e.g. Pune"
                   className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Buyer PIN Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  maxLength={6}
+                  value={buyerPincode}
+                  onChange={(e) => setBuyerPincode(e.target.value.replace(/\\D/g, '').slice(0, 6))}
+                  placeholder="6-digit PIN"
+                  aria-describedby="invoice-buyer-pincode-help"
+                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
+                />
+                <p id="invoice-buyer-pincode-help" className="mt-1 text-[10px] text-slate-500">Required before issuing. Draft invoices may be saved without it.</p>
               </div>
 
               <div>
