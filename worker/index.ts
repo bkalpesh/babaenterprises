@@ -2199,7 +2199,7 @@ export const worker = {
                   subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   apply_round_off, round_off_paise, total_invoice_amount_paise
-                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 invoiceId,
                 targetFY,
