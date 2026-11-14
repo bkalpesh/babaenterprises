@@ -85,6 +85,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productStatusFilter, setProductStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // References state
   const [references, setReferences] = useState<CustomerReference[]>([]);
@@ -1041,99 +1043,184 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB 2: PRODUCTS */}
             {activeTab === 'products' && (
-              <div className="flex-1 p-6 overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="font-heading text-lg font-bold text-slate-900">
-                      Product Catalogue Master
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Database-backed component directory. Updates persist directly to Cloudflare D1.
-                    </p>
-                  </div>
-                  <button
-                    onClick={loadProducts}
-                    disabled={productsLoading}
-                    className="px-3 py-1.5 text-xs font-semibold text-[#0755A5] bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200"
-                  >
-                    {productsLoading ? 'Refreshing...' : 'Refresh Catalogue'}
-                  </button>
-                </div>
-
-                {productsError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between">
-                    <span>{productsError}</span>
-                    <button onClick={loadProducts} className="font-bold underline text-red-800">
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {productsLoading ? (
-                  <div className="p-12 text-center text-slate-500 text-xs">
-                    <p className="font-semibold text-slate-700">Loading products from D1 database...</p>
-                  </div>
-                ) : products.length === 0 ? (
-                  <div className="p-12 text-center text-slate-500 text-xs bg-white rounded-xl border border-slate-200">
-                    <p className="font-semibold text-slate-700">No products found in the database.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {products.map((prod) => {
-                      const hsn = prod.hsnCode || prod.hsn_code;
-                      const pricePaise = prod.unitPricePaise !== undefined ? prod.unitPricePaise : prod.unit_price_paise;
-                      const gstBps = prod.gstRateBps !== undefined && prod.gstRateBps !== null ? prod.gstRateBps : prod.gst_rate_bps;
-                      const isActive = prod.isActive ?? prod.is_active ?? true;
-
-                      return (
-                        <div
-                          key={prod.id}
-                          className="p-4 bg-white rounded-xl border border-slate-200 flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex items-center gap-3 mb-3">
-                              <img
-                                src={prod.image || prod.image_url}
-                                alt={prod.name}
-                                className="w-14 h-14 rounded-lg object-cover bg-slate-100 border border-slate-200"
-                              />
-                              <div>
-                                <h4 className="font-heading text-sm font-bold text-slate-900">{prod.name}</h4>
-                                <span className="text-[11px] text-[#0755A5] font-medium">{prod.categoryLabel || prod.category_label}</span>
-                              </div>
-                            </div>
-                            <p className="text-xs text-slate-600 line-clamp-2 mb-2">{prod.shortDescription || prod.short_description}</p>
-                            
-                            <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                              <span>HSN: <strong className="text-slate-800">{hsn || 'Unassigned'}</strong></span>
-                              <span>•</span>
-                              <span>Rate: <strong className="text-slate-800">{pricePaise && pricePaise > 0 ? `₹${(pricePaise / 100).toFixed(2)}` : 'On Request'}</strong></span>
-                              <span>•</span>
-                              <span>GST: <strong className="text-slate-800">{gstBps !== undefined && gstBps !== null ? `${gstBps / 100}%` : 'Unconfirmed'}</strong></span>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                            <span className={isActive ? 'text-emerald-600 font-medium' : 'text-slate-400 font-medium'}>
-                              {isActive ? 'Active in Catalogue' : 'Disabled'}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setProductSaveError(null);
-                                setEditingProduct({ ...prod });
-                              }}
-                              className="text-[#0755A5] hover:underline font-semibold flex items-center gap-1"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                              <span>Edit</span>
-                            </button>
-                          </div>
+              <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/70">
+                <div className="p-5 md:p-7 space-y-6">
+                  <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#102F59] via-[#124477] to-[#0755A5] p-6 md:p-7 text-white shadow-sm">
+                    <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full border-[28px] border-white/5" />
+                    <div className="absolute right-20 -bottom-24 h-48 w-48 rounded-full bg-white/5" />
+                    <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">
+                          <Layers className="h-4 w-4" /> Inventory administration
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <h3 className="font-heading text-2xl font-bold tracking-tight">Product Catalogue Master</h3>
+                        <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">
+                          Manage your product records, statutory classifications and catalogue availability from one place.
+                        </p>
+                      </div>
+                      <button
+                        onClick={loadProducts}
+                        disabled={productsLoading}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${productsLoading ? 'animate-spin' : ''}`} />
+                        {productsLoading ? 'Refreshing…' : 'Refresh catalogue'}
+                      </button>
+                    </div>
+                  </section>
 
+                  <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total products</span>
+                        <span className="rounded-lg bg-blue-50 p-2 text-[#0755A5]"><Layers className="h-4 w-4" /></span>
+                      </div>
+                      <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{products.length}</div>
+                      <p className="mt-1 text-[11px] text-slate-500">Records in the catalogue</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active</span>
+                        <span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><CheckCircle2 className="h-4 w-4" /></span>
+                      </div>
+                      <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{products.filter((p) => Boolean(p.isActive ?? p.is_active ?? true)).length}</div>
+                      <p className="mt-1 text-[11px] text-slate-500">Available for catalogue use</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Inactive</span>
+                        <span className="rounded-lg bg-slate-100 p-2 text-slate-600"><Lock className="h-4 w-4" /></span>
+                      </div>
+                      <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{products.filter((p) => !Boolean(p.isActive ?? p.is_active ?? true)).length}</div>
+                      <p className="mt-1 text-[11px] text-slate-500">Hidden from active catalogue use</p>
+                    </div>
+                  </section>
+
+                  {productsError && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                      <div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" /><span>{productsError}</span></div>
+                      <button onClick={loadProducts} className="shrink-0 font-bold underline">Retry</button>
+                    </div>
+                  )}
+
+                  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-4 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Catalogue records</h4>
+                        <p className="mt-1 text-[11px] text-slate-500">Search products and filter by availability. Changes are saved to the database.</p>
+                      </div>
+                      <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+                        <div className="relative min-w-0 flex-1 sm:w-64">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="search"
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Search name, HSN or category…"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#0755A5] focus:bg-white focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div className="relative">
+                          <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <select
+                            value={productStatusFilter}
+                            onChange={(e) => setProductStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-xs font-semibold text-slate-700 outline-none focus:border-[#0755A5] focus:ring-2 focus:ring-blue-100 sm:w-36"
+                          >
+                            <option value="all">All statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {productsLoading ? (
+                      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                        {[1, 2, 3, 4, 5, 6].map((n) => (
+                          <div key={n} className="animate-pulse rounded-xl border border-slate-200 p-4">
+                            <div className="flex gap-3"><div className="h-14 w-14 rounded-lg bg-slate-100" /><div className="flex-1 space-y-2 pt-1"><div className="h-3 w-3/4 rounded bg-slate-100" /><div className="h-2.5 w-1/2 rounded bg-slate-100" /></div></div>
+                            <div className="mt-4 h-10 rounded-lg bg-slate-100" /><div className="mt-3 h-8 rounded-lg bg-slate-100" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : products.length === 0 ? (
+                      <div className="px-6 py-16 text-center">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Layers className="h-6 w-6" /></div>
+                        <p className="mt-4 text-sm font-bold text-slate-800">No products in the catalogue</p>
+                        <p className="mt-1 text-xs text-slate-500">No product records were returned from the database.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                        {products.filter((prod) => {
+                          const active = Boolean(prod.isActive ?? prod.is_active ?? true);
+                          const statusMatches = productStatusFilter === 'all' || (productStatusFilter === 'active' ? active : !active);
+                          const hsn = prod.hsnCode || prod.hsn_code || '';
+                          const category = prod.categoryLabel || prod.category_label || '';
+                          const description = prod.shortDescription || prod.short_description || '';
+                          const query = productSearch.trim().toLowerCase();
+                          const searchMatches = !query || [prod.name, hsn, category, description].some((v) => String(v || '').toLowerCase().includes(query));
+                          return statusMatches && searchMatches;
+                        }).map((prod) => {
+                          const hsn = prod.hsnCode || prod.hsn_code;
+                          const pricePaise = prod.unitPricePaise !== undefined ? prod.unitPricePaise : prod.unit_price_paise;
+                          const gstBps = prod.gstRateBps !== undefined && prod.gstRateBps !== null ? prod.gstRateBps : prod.gst_rate_bps;
+                          const isActive = Boolean(prod.isActive ?? prod.is_active ?? true);
+                          return (
+                            <article key={prod.id} className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                                  {(prod.image || prod.image_url) ? (
+                                    <img src={prod.image || prod.image_url} alt={prod.name} className="h-full w-full object-cover" />
+                                  ) : <Layers className="h-6 w-6 text-slate-300" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h5 className="break-words text-sm font-bold leading-5 text-slate-900">{prod.name}</h5>
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                      <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                      {isActive ? 'ACTIVE' : 'INACTIVE'}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-[11px] font-medium text-[#0755A5]">{prod.categoryLabel || prod.category_label || 'Uncategorised'}</p>
+                                  <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{prod.shortDescription || prod.short_description || 'No product description provided.'}</p>
+                                </div>
+                              </div>
+                              <div className="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-lg border border-slate-100 bg-slate-50/80 py-2.5">
+                                <div className="px-2"><p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">HSN</p><p className="mt-1 truncate text-[11px] font-bold text-slate-800">{hsn || '—'}</p></div>
+                                <div className="px-2"><p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Unit rate</p><p className="mt-1 truncate text-[11px] font-bold text-slate-800">{pricePaise && pricePaise > 0 ? `₹${(pricePaise / 100).toFixed(2)}` : 'On request'}</p></div>
+                                <div className="px-2"><p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">GST</p><p className="mt-1 truncate text-[11px] font-bold text-slate-800">{gstBps !== undefined && gstBps !== null ? `${gstBps / 100}%` : '—'}</p></div>
+                              </div>
+                              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                                <span className="text-[10px] text-slate-400">Product ID: {prod.id}</span>
+                                <button
+                                  onClick={() => { setProductSaveError(null); setEditingProduct({ ...prod }); }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-[#0755A5] transition hover:border-blue-200 hover:bg-blue-100"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" /> Edit record
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!productsLoading && products.length > 0 && products.filter((prod) => {
+                      const active = Boolean(prod.isActive ?? prod.is_active ?? true);
+                      const statusMatches = productStatusFilter === 'all' || (productStatusFilter === 'active' ? active : !active);
+                      const query = productSearch.trim().toLowerCase();
+                      const searchMatches = !query || [prod.name, prod.hsnCode || prod.hsn_code, prod.categoryLabel || prod.category_label, prod.shortDescription || prod.short_description].some((v) => String(v || '').toLowerCase().includes(query));
+                      return statusMatches && searchMatches;
+                    }).length === 0 && (
+                      <div className="px-6 py-12 text-center">
+                        <Search className="mx-auto h-6 w-6 text-slate-300" />
+                        <p className="mt-3 text-sm font-bold text-slate-800">No matching products</p>
+                        <p className="mt-1 text-xs text-slate-500">Try another search term or status filter.</p>
+                        <button onClick={() => { setProductSearch(''); setProductStatusFilter('all'); }} className="mt-3 text-xs font-bold text-[#0755A5] hover:underline">Clear filters</button>
+                      </div>
+                    )}
+                  </section>
+                </div>
                 {/* Edit Modal Dialog */}
                 {editingProduct && (
                   <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
