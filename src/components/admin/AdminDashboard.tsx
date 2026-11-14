@@ -278,15 +278,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-hidden"
+      className="admin-portal-shell fixed inset-0 z-50 flex items-stretch justify-center overflow-hidden bg-black/75 backdrop-blur-xs sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="relative bg-white rounded-2xl max-w-5xl w-full h-[90vh] border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
+        className="relative flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-[92vh] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="bg-[#102F59] text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+        <div className="flex shrink-0 items-center justify-between gap-2 bg-[#102F59] px-3 py-2.5 text-white sm:px-6 sm:py-3.5">
           <div className="flex items-center gap-4">
             <div className="bg-white rounded-lg px-2.5 py-1.5 shadow-xs shrink-0 max-w-[180px]">
               <img
@@ -386,7 +386,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           /* Authenticated Dashboard Tabs */
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
             {/* Tab Navigation */}
-            <div className="bg-white border-b border-slate-200 px-6 flex items-center gap-6 overflow-x-auto shrink-0">
+            <div className="flex shrink-0 items-center gap-4 overflow-x-auto border-b border-slate-200 bg-white px-3 sm:gap-6 sm:px-6">
               <button
                 onClick={() => setActiveTab('enquiries')}
                 className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
@@ -725,7 +725,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB: CUSTOMERS */}
             {activeTab === 'customers' && (
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-6">
                 <CustomerManagement />
               </div>
             )}
@@ -877,7 +877,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB: GST TAX INVOICES */}
             {activeTab === 'invoices' && (
-              <div className="flex-1 min-h-0 w-full overflow-y-auto overscroll-contain px-3 py-4 sm:p-6">
+              <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-slate-900">
@@ -1080,7 +1080,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB 2: PRODUCTS */}
             {activeTab === 'products' && (
-              <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/70">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50/70">
                 <div className="p-5 md:p-7 space-y-6">
                   <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#102F59] via-[#124477] to-[#0755A5] p-6 md:p-7 text-white shadow-sm">
                     <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full border-[28px] border-white/5" />
@@ -1399,7 +1399,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB 3: REFERENCES */}
             {activeTab === 'references' && (
-              <div className="flex-1 p-6 overflow-y-auto space-y-6">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-3 sm:space-y-6 sm:p-6">
                 <div>
                   <h3 className="font-heading text-lg font-bold text-slate-900">
                     Manage Customer References
@@ -1481,7 +1481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB 4: CONTACT & BUSINESS */}
             {activeTab === 'contact' && (
-              <div className="flex-1 p-6 overflow-y-auto max-w-2xl">
+              <div className="min-h-0 w-full max-w-2xl flex-1 overflow-y-auto overscroll-contain p-3 sm:p-6">
                 <div className="mb-6">
                   <h3 className="font-heading text-lg font-bold text-slate-900">
                     Business Profile & Contact Settings
