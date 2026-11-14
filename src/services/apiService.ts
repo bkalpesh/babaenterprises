@@ -533,7 +533,7 @@ export const ApiService = {
     return (await res.json()) as any;
   },
 
-  async sendQuotation(id: string, payload: { recipient_email: string; recipient_name?: string; custom_message?: string }): Promise<any> {
+  async sendQuotation(id: string, payload: { dispatch_method?: 'EMAIL' | 'MANUAL'; recipient_email?: string; recipient_name?: string; custom_message?: string; manual_confirmation?: boolean }): Promise<any> {
     const res = await fetch(`${API_BASE}/quotations/${id}/send`, {
       method: 'POST',
       headers: {
