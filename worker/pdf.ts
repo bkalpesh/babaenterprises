@@ -70,7 +70,7 @@ export function generateInvoiceHTML(
   <meta charset="UTF-8">
   <title>Tax Invoice - ${invoice.invoice_number || 'DRAFT'}</title>
   <style>
-    @page { size: A4 portrait; margin: 60mm 10mm 34mm; }
+    @page { size: A4 portrait; margin: 62mm 10mm 38mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
     .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
@@ -123,8 +123,8 @@ export function generateInvoiceHTML(
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .no-print { display: none !important; }
       .invoice-card { width: 100%; max-width: none; margin: 0; border: 0; overflow: visible; }
-      .invoice-header { position: fixed; z-index: 20; top: -56mm; left: 0; right: 0; width: 100%; }
-      .invoice-footer { position: fixed; z-index: 20; bottom: -30mm; left: 0; right: 0; width: 100%; }
+      .invoice-header { position: fixed; z-index: 20; top: 0; left: 10mm; right: 10mm; width: auto; }
+      .invoice-footer { position: fixed; z-index: 20; bottom: 0; left: 10mm; right: 10mm; width: auto; }
       .buyer-table, .items-table, .summary-table { width: 100%; }
       .items-table thead { display: table-header-group; }
       .items-table tr, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
