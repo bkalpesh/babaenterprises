@@ -123,8 +123,8 @@ export function generateInvoiceHTML(
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .no-print { display: none !important; }
       .invoice-card { width: 100%; max-width: none; margin: 0; border: 0; overflow: visible; }
-      .invoice-header { position: fixed; z-index: 20; top: 0; left: 10mm; right: 10mm; width: auto; }
-      .invoice-footer { position: fixed; z-index: 20; bottom: 0; left: 10mm; right: 10mm; width: auto; }
+      .invoice-header { position: fixed; z-index: 20; top: -59mm; left: 10mm; right: 10mm; width: auto; }
+      .invoice-footer { position: fixed; z-index: 20; bottom: -35mm; left: 10mm; right: 10mm; width: auto; }
       .buyer-table, .items-table, .summary-table { width: 100%; }
       .items-table thead { display: table-header-group; }
       .items-table tr, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
