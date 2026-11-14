@@ -230,6 +230,7 @@ export const CustomerManagement: React.FC = () => {
             </p>
           </div>
         ) : (
+          <>
           <div className="space-y-3 p-3 md:hidden">
             {filteredCustomers.map((cust) => (
               <article key={cust.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -370,6 +371,7 @@ export const CustomerManagement: React.FC = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         <div className="flex flex-col gap-1 border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
