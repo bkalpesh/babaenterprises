@@ -22,6 +22,9 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
   const [recipientEmail, setRecipientEmail] = useState(quotation.buyer_email || '');
   const [recipientName, setRecipientName] = useState(quotation.buyer_name || '');
   const [customMessage, setCustomMessage] = useState('');
+  const [dispatchMethod, setDispatchMethod] = useState<'MANUAL' | 'EMAIL'>('MANUAL');
+  const [manualConfirmed, setManualConfirmed] = useState(false);
+  const [isOpeningPdf, setIsOpeningPdf] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -37,16 +40,23 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
 
     try {
       if (targetStatus === 'Send') {
-        if (!recipientEmail || !recipientEmail.includes('@')) {
-          setError('Valid recipient email address is required.');
+        if (dispatchMethod === 'EMAIL' && (!recipientEmail || !recipientEmail.includes('@'))) {
+          setError('Enter a valid recipient email address, or choose manual dispatch.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (dispatchMethod === 'MANUAL' && !manualConfirmed) {
+          setError('Open the PDF, share it with the customer, and confirm the manual sharing before continuing.');
           setIsSubmitting(false);
           return;
         }
 
         const res = await ApiService.sendQuotation(quotation.id, {
-          recipient_email: recipientEmail,
+          dispatch_method: dispatchMethod,
+          recipient_email: dispatchMethod === 'EMAIL' ? recipientEmail : undefined,
           recipient_name: recipientName,
           custom_message: customMessage,
+          manual_confirmation: dispatchMethod === 'MANUAL' ? manualConfirmed : undefined,
         });
 
         if (res && res.success === false) {
@@ -56,7 +66,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
         }
 
         if (res?.simulated) {
-          setNotice(res.message || 'Dispatch was simulated. The quotation remains Draft until a real email provider accepts the dispatch.');
+          setNotice(res.message || 'Email was not sent. Choose manual dispatch to share the PDF and mark the quotation Sent.');
           return;
         }
 
@@ -228,33 +238,64 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
             </div>
           </div>
 
-          {/* Conditional Input Fields */}
+          {/* Manual PDF sharing is the default; email is opt-in. */}
           {targetStatus === 'Send' && (
             <div className="space-y-3 pt-2 border-t border-slate-200">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Recipient Email Address <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
-                  placeholder="purchasing@clientcompany.com"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
-                />
+                <label className="block text-xs font-bold text-slate-700 mb-2">Dispatch Method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setDispatchMethod('MANUAL')}
+                    className={`p-3 rounded-lg border text-left text-xs transition ${dispatchMethod === 'MANUAL' ? 'border-[#0755A5] bg-blue-50 text-[#0755A5]' : 'border-slate-200 text-slate-700'}`}>
+                    <span className="font-bold block">Manual PDF sharing</span>
+                    <span className="block mt-1 text-[11px]">No email setup required</span>
+                  </button>
+                  <button type="button" onClick={() => setDispatchMethod('EMAIL')}
+                    className={`p-3 rounded-lg border text-left text-xs transition ${dispatchMethod === 'EMAIL' ? 'border-[#0755A5] bg-blue-50 text-[#0755A5]' : 'border-slate-200 text-slate-700'}`}>
+                    <span className="font-bold block">Email (optional)</span>
+                    <span className="block mt-1 text-[11px]">Requires email provider setup</span>
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Recipient Contact Name</label>
-                <input
-                  type="text"
-                  value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  placeholder="Mr. Purchase Manager"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
-                />
-              </div>
+              {dispatchMethod === 'MANUAL' ? (
+                <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                  <p className="text-xs text-slate-700">Open the quotation PDF, share it with the customer using WhatsApp or your preferred channel, then confirm below. The quotation moves to Sent only after your confirmation.</p>
+                  <button type="button" disabled={isOpeningPdf}
+                    onClick={async () => {
+                      setError(null);
+                      setIsOpeningPdf(true);
+                      try {
+                        const result = await ApiService.openQuotationPdf(quotation.id);
+                        if (!result.success) setError(result.error || 'Unable to open quotation PDF.');
+                      } catch (err: any) {
+                        setError(err?.message || 'Unable to open quotation PDF.');
+                      } finally {
+                        setIsOpeningPdf(false);
+                      }
+                    }}
+                    className="px-3 py-2 text-xs font-semibold border border-[#0755A5] text-[#0755A5] rounded-lg bg-white disabled:opacity-50">
+                    {isOpeningPdf ? 'Opening PDF...' : 'Open quotation PDF'}
+                  </button>
+                  <label className="flex items-start gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={manualConfirmed} onChange={(e) => setManualConfirmed(e.target.checked)} className="mt-0.5" />
+                    <span>I have shared this quotation PDF with the customer.</span>
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Recipient Email Address <span className="text-red-500">*</span></label>
+                    <input type="email" required value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)}
+                      placeholder="purchasing@clientcompany.com" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Recipient Contact Name</label>
+                    <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
+                      placeholder="Mr. Purchase Manager" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+                  </div>
+                  <p className="text-[11px] text-slate-500">If email is not configured or delivery fails, no email is claimed as sent. Choose Manual PDF sharing instead.</p>
+                </div>
+              )}
             </div>
           )}
 
