@@ -858,12 +858,12 @@ export const worker = {
                 INSERT INTO quotations (
                   id, quotation_number, quotation_prefix, sequence_number, financial_year,
                   quotation_date, valid_until, buyer_name, buyer_company,
-                  buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_pincode, buyer_contact_person, buyer_phone, buyer_email,
+                  buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_pincode, buyer_contact_person, buyer_phone, buyer_email, buyer_fields_version,
                   status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes,
                   is_interstate, customer_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 quoteId,
                 quoteNumber,
@@ -955,11 +955,11 @@ export const worker = {
                   INSERT INTO quotations (
                     id, quotation_number, quotation_prefix, sequence_number, financial_year,
                     quotation_date, valid_until, buyer_name, buyer_company,
-                    buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_pincode, buyer_contact_person, buyer_phone, buyer_email,
+                    buyer_gstin, buyer_state_code, buyer_state_name, buyer_address, buyer_city, buyer_pincode, buyer_contact_person, buyer_phone, buyer_email, buyer_fields_version,
                     status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                     cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                     round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
                   quoteId,
                   quoteNumber,
@@ -1175,6 +1175,7 @@ export const worker = {
               buyer_address = ?,
               buyer_city = ?,
               buyer_contact_person = ?,
+              buyer_fields_version = 2,
               buyer_pincode = ?,
               buyer_phone = ?,
               buyer_email = ?,
@@ -2108,6 +2109,9 @@ export const worker = {
         const invoicePrefix = getInvoicePrefix(targetFY);
 
         const customerId = (quote as any).customer_id || null;
+        const isLegacyBuyerRecord = Number(quote.buyer_fields_version || 1) < 2;
+        const invoiceBuyerName = isLegacyBuyerRecord ? (quote.buyer_company || quote.buyer_name) : quote.buyer_name;
+        const invoiceBuyerTradeName = isLegacyBuyerRecord ? null : quote.buyer_company;
 
         // ATOMIC D1 BATCH: Insert invoice with exact quotation amounts, update quotation, and insert line items
         try {
@@ -2127,8 +2131,10 @@ export const worker = {
               invoicePrefix,
               env.SELLER_GSTIN,
               env.SELLER_STATE_CODE,
-              quote.buyer_name,
-              quote.buyer_company,
+              invoiceBuyerName,
+
+              invoiceBuyerTradeName,
+
               quote.buyer_address,
               quote.buyer_city || null,
               quote.buyer_state_name,
@@ -2206,8 +2212,10 @@ export const worker = {
                 invoicePrefix,
                 env.SELLER_GSTIN,
                 env.SELLER_STATE_CODE,
-                quote.buyer_name,
-                quote.buyer_company,
+                invoiceBuyerName,
+
+                invoiceBuyerTradeName,
+
                 quote.buyer_address,
                 quote.buyer_city || null,
                 quote.buyer_state_name,
