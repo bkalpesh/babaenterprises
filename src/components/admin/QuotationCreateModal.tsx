@@ -88,9 +88,12 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 
     if (initialData) {
       setSelectedCustomerId(initialData.customer_id || '');
-      setBuyerName(initialData.buyer_name || '');
-      setBuyerCompany(initialData.buyer_company || '');
-      setBuyerContactPerson(initialData.buyer_contact_person || '');
+      const isLegacyBuyerRecord = Number(initialData.buyer_fields_version || 1) < 2;
+      setBuyerName(isLegacyBuyerRecord ? (initialData.buyer_company || initialData.buyer_name || '') : (initialData.buyer_name || ''));
+      setBuyerCompany(isLegacyBuyerRecord ? '' : (initialData.buyer_company || ''));
+      setBuyerContactPerson(isLegacyBuyerRecord
+        ? (initialData.buyer_company && initialData.buyer_name !== initialData.buyer_company ? initialData.buyer_name : '')
+        : (initialData.buyer_contact_person || ''));
       setBuyerPhone(initialData.buyer_phone || '');
       setBuyerEmail(initialData.buyer_email || '');
       setBuyerGstin(initialData.buyer_gstin || '');
