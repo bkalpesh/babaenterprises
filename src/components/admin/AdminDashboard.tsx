@@ -518,7 +518,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   {/* List Container */}
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-slate-100">
                     {filteredEnquiries.length === 0 ? (
                       <div className="p-8 text-center text-xs text-slate-500">
                         No enquiries match the current criteria.
@@ -615,7 +615,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       {/* Contact Specs */}
-                      <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                      <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2 sm:p-4">
                         <div>
                           <span className="text-slate-400 uppercase tracking-wider block">Company</span>
                           <span className="font-bold text-slate-800 text-sm block mt-0.5">
@@ -679,16 +679,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <h4 className="font-heading text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
                             Attached Drawing / Technical File
                           </h4>
-                          <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
+                          <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center gap-2">
                               <FileText className="w-4 h-4 text-[#0755A5]" />
-                              <span className="font-medium text-slate-800">{selectedEnquiry.drawingFileName}</span>
+                              <span className="break-all font-medium text-slate-800">{selectedEnquiry.drawingFileName}</span>
                             </div>
                             {selectedEnquiry.drawingFileData && (
                               <a
                                 href={selectedEnquiry.drawingFileData}
                                 download={selectedEnquiry.drawingFileName}
-                                className="px-3 py-1 bg-[#0755A5] text-white rounded text-[11px] font-semibold hover:bg-[#102F59]"
+                                className="min-h-10 shrink-0 rounded bg-[#0755A5] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#102F59]"
                               >
                                 Download Attachment
                               </a>
@@ -1588,7 +1588,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
-                  <div className="pt-2 flex items-center justify-between">
+                  <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
                     {contactSaved ? (
                       <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                         <CheckCircle2 className="w-4 h-4" />
@@ -1598,7 +1598,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <button
                       type="submit"
-                      className="px-5 py-2.5 bg-[#102F59] hover:bg-[#0755A5] text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
+                      className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[#102F59] px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#0755A5] sm:w-auto"
                     >
                       <Save className="w-4 h-4" />
                       <span>Save Information</span>
