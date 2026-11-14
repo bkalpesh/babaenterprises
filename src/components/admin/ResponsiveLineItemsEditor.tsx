@@ -5,7 +5,7 @@ interface ResponsiveLineItemsEditorProps {
   items: any[];
   availableProducts?: any[];
   onAdd: () => void;
-  onUpdate: (index: number, field: string, value: any) => void;
+  onUpdate: (index: number, field: any, value: any) => void;
   onProductSelect: (index: number, productId: string) => void;
   onRemove: (index: number) => void;
   documentLabel: 'Invoice' | 'Quotation';
