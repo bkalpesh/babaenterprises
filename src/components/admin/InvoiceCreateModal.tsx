@@ -489,7 +489,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
                   autoComplete="postal-code"
                   maxLength={6}
                   value={buyerPincode}
-                  onChange={(e) => setBuyerPincode(e.target.value.replace(/\\D/g, '').slice(0, 6))}
+                  onChange={(e) => setBuyerPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="6-digit PIN"
                   aria-describedby="invoice-buyer-pincode-help"
                   className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white"
