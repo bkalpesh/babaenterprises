@@ -128,7 +128,7 @@ export const CustomerManagement: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
       {/* Notifications */}
       {notification && (
         <div
@@ -156,7 +156,7 @@ export const CustomerManagement: React.FC = () => {
       )}
 
       {/* Top Controls Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5">
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Building2 className="w-5 h-5 text-[#0755A5]" />
@@ -169,7 +169,7 @@ export const CustomerManagement: React.FC = () => {
 
         <button
           onClick={handleCreateCustomer}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0755A5] hover:bg-[#064485] text-white text-sm font-semibold rounded-lg shadow-sm transition"
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#064485] sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           Add New Customer
@@ -177,7 +177,7 @@ export const CustomerManagement: React.FC = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -230,7 +230,7 @@ export const CustomerManagement: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
