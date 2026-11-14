@@ -120,10 +120,10 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in sm:items-center sm:p-4">
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-lg sm:rounded-xl">
         {/* Modal Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-white sm:px-6 sm:py-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[#0755A5] rounded-lg">
               <Clock className="w-5 h-5 text-white" />
@@ -144,7 +144,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 pb-8 sm:p-6">
           {notice && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -160,7 +160,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
 
           {/* Quotation Information Summary */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
-            <div className="flex justify-between">
+            <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
               <span className="text-slate-500">Buyer Entity:</span>
               <span className="font-bold text-slate-900">{quotation.buyer_name} ({quotation.buyer_company || 'N/A'})</span>
             </div>
@@ -177,7 +177,7 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
           {/* Target Status Selector */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">Select Action / Target Status</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {quotation.status === 'Draft' && (
                 <button
                   type="button"
@@ -353,19 +353,19 @@ export const QuotationStatusModal: React.FC<QuotationStatusModalProps> = ({
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+          <div className="sticky bottom-0 -mx-3 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:static sm:mx-0 sm:flex-row sm:justify-end sm:gap-3 sm:px-0">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg"
+              className="min-h-11 w-full rounded-lg px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#0755A5] hover:bg-[#064485] rounded-lg shadow-sm disabled:opacity-50"
+              className="min-h-11 w-full rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#064485] disabled:opacity-50 sm:w-auto"
             >
               {isSubmitting ? 'Updating Status...' : 'Apply Status Change'}
             </button>
