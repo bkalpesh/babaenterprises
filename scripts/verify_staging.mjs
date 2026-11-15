@@ -3886,7 +3886,7 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
       sequence_number: null, invoice_date: '2025-03-15', financial_year: '2024-25',
       seller_gstin: '27AGCPB8322L1ZG', seller_state_code: '27', seller_legal_name: 'BABA ENTERPRISES',
       seller_trade_name: 'BABA ENTERPRISES', seller_address: 'Test Address',
-      buyer_name: 'Test Buyer', buyer_trade_name: null, buyer_address: 'Test Road', buyer_city: 'Pune',
+      buyer_name: 'Test Buyer', buyer_trade_name: '  test   buyer  ', buyer_address: 'Test Road', buyer_city: 'Pune',
       buyer_state_name: 'Maharashtra', buyer_state_code: '27', buyer_pincode: '411026',
       buyer_gstin: '27AAACB2026R1Z9', is_interstate: 0, place_of_supply: 'Maharashtra (27)',
       reference_quotation_id: null, subtotal_gross_paise: 10000, total_discount_paise: 0,
@@ -3906,9 +3906,10 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
       cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0, total_amount_paise: 11800
     }]
   );
-  for (const value of ['AR/103', 'GP/103', '2025-03-14', 'PO/103', '2025-03-10']) {
+  for (const value of ['AR/103', 'GP/103', '14 March 2025', 'PO/103', '10 March 2025']) {
     if (!html.includes(value)) throw new Error(`Invoice HTML missing ${value}`);
   }
+  if (html.includes('<div>test buyer</div>')) throw new Error('Duplicate buyer trade name was rendered when it matches the legal name');
   if (html.includes('Reverse Charge')) throw new Error('Reverse Charge still appears in invoice HTML');
 });
 
