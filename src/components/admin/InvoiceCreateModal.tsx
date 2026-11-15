@@ -19,6 +19,8 @@ import { INDIAN_STATES, getStateByCode } from '../../data/indianStates';
 import { CustomerModal } from './CustomerModal';
 import { ResponsiveLineItemsEditor } from './ResponsiveLineItemsEditor';
 
+const getIndiaToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
 interface InvoiceLineItemRow {
   productId?: string;
   itemDescription: string;
@@ -47,6 +49,12 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
 }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [arNumber, setArNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(getIndiaToday());
+  const [gatePassNumber, setGatePassNumber] = useState('');
+  const [gatePassDate, setGatePassDate] = useState('');
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
+  const [purchaseOrderDate, setPurchaseOrderDate] = useState('');
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   // Buyer details (autofilled from Customer Master, customizable per invoice)
@@ -79,12 +87,21 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     try {
       const data = await ApiService.getCustomers();
       setCustomers(data.filter((c) => c.is_active));
+      if (initialData) {
+        const linkedCustomer = data.find((c) => c.id === initialData.customer_id);
+        setArNumber(linkedCustomer?.ar_number || linkedCustomer?.arNumber || initialData.ar_number || '');
+      }
     } catch {
       // Offline fallback
     }
 
     if (initialData) {
       setSelectedCustomerId(initialData.customer_id || '');
+      setInvoiceDate(initialData.invoice_date || getIndiaToday());
+      setGatePassNumber(initialData.gate_pass_number || '');
+      setGatePassDate(initialData.gate_pass_date || '');
+      setPurchaseOrderNumber(initialData.purchase_order_number || '');
+      setPurchaseOrderDate(initialData.purchase_order_date || '');
       setBuyerName(initialData.buyer_name || '');
       setBuyerTradeName(initialData.buyer_trade_name || '');
       setBuyerGstin(initialData.buyer_gstin || '');
@@ -115,6 +132,12 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     } else {
       // Reset form to clean state for creation
       setSelectedCustomerId('');
+      setArNumber('');
+      setInvoiceDate(getIndiaToday());
+      setGatePassNumber('');
+      setGatePassDate('');
+      setPurchaseOrderNumber('');
+      setPurchaseOrderDate('');
       setBuyerName('');
       setBuyerTradeName('');
       setBuyerGstin('');
@@ -146,6 +169,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     setSelectedCustomerId(customerId);
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
+      setArNumber(cust.ar_number || cust.arNumber || '');
       setBuyerName(cust.legalName || cust.legal_name || '');
       setBuyerTradeName(cust.tradeName || cust.trade_name || '');
       setBuyerGstin(cust.gstin || '');
@@ -302,6 +326,11 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     try {
       const payload = {
         customer_id: selectedCustomerId || undefined,
+        invoice_date: invoiceDate,
+        gate_pass_number: gatePassNumber.trim() || undefined,
+        gate_pass_date: gatePassDate || undefined,
+        purchase_order_number: purchaseOrderNumber.trim() || undefined,
+        purchase_order_date: purchaseOrderDate || undefined,
         buyer_name: buyerName.trim(),
         buyer_trade_name: buyerTradeName.trim() || undefined,
         buyer_address: buyerAddress.trim() || undefined,
@@ -378,6 +407,21 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
             </div>
           )}
 
+          {/* Invoice date: user-selectable, defaulting to India local date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Invoice Date <span className="text-red-500">*</span></label>
+              <input type="date" required max={getIndiaToday()} value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5] bg-white" />
+              <p className="mt-1 text-[10px] text-slate-500">Earlier dates, including previous financial years, are permitted. Future dates are not.</p>
+            </div>
+            <div className="flex items-center rounded-lg bg-slate-50 px-3 py-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Financial Year</div>
+                <div className="text-sm font-bold text-slate-800">{invoiceDate ? (Number(invoiceDate.slice(5, 7)) >= 4 ? Number(invoiceDate.slice(0, 4)) + '-' + String((Number(invoiceDate.slice(0, 4)) + 1) % 100).padStart(2, '0') : (Number(invoiceDate.slice(0, 4)) - 1) + '-' + String(Number(invoiceDate.slice(0, 4)) % 100).padStart(2, '0')) : '—'}</div>
+              </div>
+            </div>
+          </div>
+
           {/* Section 1: Customer Selection */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
@@ -413,6 +457,12 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Customer AR Number</div>
+              <div className="mt-0.5 text-sm font-semibold text-slate-800">{arNumber || 'Not assigned in Customer Master'}</div>
+              <p className="mt-0.5 text-[10px] text-slate-500">Managed in Customer Master; automatically copied to this invoice.</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -530,6 +580,29 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
               >
                 {isInterstate ? 'Inter-State Supply (IGST 100%)' : 'Intra-State Supply (CGST 50% + SGST 50%)'}
               </span>
+            </div>
+          </div>
+
+          {/* Invoice-level Gate Pass and Purchase Order references */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-800">Dispatch & Purchase Order References (Optional)</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Gate Pass Number</label>
+                <input type="text" maxLength={100} value={gatePassNumber} onChange={(e) => setGatePassNumber(e.target.value)} placeholder="Enter gate pass number" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Gate Pass Date</label>
+                <input type="date" value={gatePassDate} onChange={(e) => setGatePassDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Purchase Order Number</label>
+                <input type="text" maxLength={100} value={purchaseOrderNumber} onChange={(e) => setPurchaseOrderNumber(e.target.value)} placeholder="Enter purchase order number" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Purchase Order Date</label>
+                <input type="date" value={purchaseOrderDate} onChange={(e) => setPurchaseOrderDate(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white" />
+              </div>
             </div>
           </div>
 
@@ -792,8 +865,16 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
           isOpen={isCustomerModalOpen}
           onClose={() => setIsCustomerModalOpen(false)}
           onSuccess={(newCust) => {
-            loadInitialState();
-            handleCustomerSelect(newCust.id);
+            setCustomers((prev) => [...prev.filter((c) => c.id !== newCust.id), newCust]);
+            setSelectedCustomerId(newCust.id);
+            setArNumber(newCust.ar_number || newCust.arNumber || '');
+            setBuyerName(newCust.legalName || newCust.legal_name || '');
+            setBuyerTradeName(newCust.tradeName || newCust.trade_name || '');
+            setBuyerGstin(newCust.gstin || '');
+            setBuyerAddress(newCust.billingAddress || newCust.billing_address || '');
+            setBuyerCity(newCust.city || '');
+            setBuyerStateCode(newCust.stateCode || newCust.state_code || '27');
+            setBuyerPincode(newCust.pincode || '');
             setIsCustomerModalOpen(false);
           }}
         />
