@@ -414,6 +414,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">AR Number</label>
               <input
                 type="text"
+                maxLength={100}
                 value={arNumber}
                 onChange={(e) => setArNumber(e.target.value)}
                 placeholder="Customer AR number"
