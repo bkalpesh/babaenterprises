@@ -143,6 +143,12 @@ export interface DBInvoice {
   invoice_prefix: string;
   sequence_number: number | null;
   invoice_date: string | null;
+  issued_at?: string | null;
+  ar_number?: string | null;
+  gate_pass_number?: string | null;
+  gate_pass_date?: string | null;
+  purchase_order_number?: string | null;
+  purchase_order_date?: string | null;
   financial_year: string;
   seller_gstin: string;
   seller_state_code: string;
@@ -199,6 +205,7 @@ export interface DBCustomer {
   contact_person: string;
   mobile: string;
   email: string | null;
+  ar_number: string | null;
   notes: string | null;
   is_active: number;
   created_at: string;
@@ -251,6 +258,7 @@ export interface DBQuotation {
   buyer_email: string | null;
   place_of_supply: string | null;
   customer_id?: string | null;
+  ar_number?: string | null;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   converted_invoice_id: string | null;
   client_approval_evidence: string | null;
