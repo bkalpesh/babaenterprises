@@ -192,10 +192,14 @@ export function generateInvoiceHTML(
         <td class="doc-col">
           <div class="doc-title">${invoice.status === 'Draft' ? 'DRAFT TAX INVOICE' : 'TAX INVOICE'}</div>
           <div class="meta-line"><span class="bold">Invoice No:</span> ${invoice.invoice_number || 'DRAFT (Unissued)'}</div>
-          <div class="meta-line"><span class="bold">Invoice Date:</span> ${invoice.invoice_date || new Date().toISOString().slice(0, 10)}</div>
+          <div class="meta-line"><span class="bold">Invoice Date:</span> ${invoice.invoice_date || ''}</div>
           <div class="meta-line"><span class="bold">Financial Year:</span> ${invoice.financial_year}</div>
           <div class="meta-line"><span class="bold">Place of Supply:</span> ${invoice.place_of_supply || (invoice.buyer_state_name + ' (' + invoice.buyer_state_code + ')')}</div>
-          <div class="meta-line"><span class="bold">Reverse Charge:</span> No</div>
+          ${invoice.ar_number ? `<div class="meta-line"><span class="bold">AR Number:</span> ${invoice.ar_number}</div>` : ''}
+          ${invoice.gate_pass_number ? `<div class="meta-line"><span class="bold">Gate Pass Number:</span> ${invoice.gate_pass_number}</div>` : ''}
+          ${invoice.gate_pass_date ? `<div class="meta-line"><span class="bold">Gate Pass Date:</span> ${invoice.gate_pass_date}</div>` : ''}
+          ${invoice.purchase_order_number ? `<div class="meta-line"><span class="bold">Purchase Order Number:</span> ${invoice.purchase_order_number}</div>` : ''}
+          ${invoice.purchase_order_date ? `<div class="meta-line"><span class="bold">Purchase Order Date:</span> ${invoice.purchase_order_date}</div>` : ''}
           <div class="meta-line"><span class="bold">Payment Status:</span> ${invoice.payment_status}</div>
         </td>
       </tr>
@@ -479,7 +483,8 @@ export function generateQuotationPDF(
         text('PIN Code: ' + (quotation.buyer_pincode || '-'), 310, y + 41, 8);
         text('Phone: ' + (quotation.buyer_phone || '-'), 310, y + 54, 8);
         text('Email: ' + (quotation.buyer_email || '-'), 310, y + 67, 8);
-        y += Math.max(82, 52 + addressLines.length * 11);
+        if (quotation.ar_number) text('AR Number: ' + quotation.ar_number, 310, y + 80, 8);
+        y += Math.max(quotation.ar_number ? 95 : 82, 52 + addressLines.length * 11);
       } else {
         // New quotations use the same legal/trade-name and address semantics as invoices.
         text('BILL TO', LEFT, y, 8, true);
@@ -499,7 +504,8 @@ export function generateQuotationPDF(
         text('Contact: ' + (quotation.buyer_contact_person || '-'), 310, detailTop + 26, 8);
         text('Phone: ' + (quotation.buyer_phone || '-'), 310, detailTop + 39, 8);
         text('Email: ' + (quotation.buyer_email || '-'), 310, detailTop + 52, 8);
-        y += Math.max(94, (addressTop - y) + (addressLines.length + locationLines.length) * 11 + 12);
+        if (quotation.ar_number) text('AR Number: ' + quotation.ar_number, 310, detailTop + 65, 8);
+        y += Math.max(quotation.ar_number ? 107 : 94, (addressTop - y) + (addressLines.length + locationLines.length) * 11 + 12);
       }
     }
     rect(LEFT, y, RIGHT - LEFT, 20, 0.90);
