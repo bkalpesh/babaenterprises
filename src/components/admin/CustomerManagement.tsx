@@ -104,6 +104,7 @@ export const CustomerManagement: React.FC = () => {
     const legal = cust.legalName || cust.legal_name || '';
     const trade = cust.tradeName || cust.trade_name || '';
     const gstin = cust.gstin || '';
+    const arNumber = cust.ar_number || cust.arNumber || '';
     const city = cust.city || '';
     const contact = cust.contactPerson || cust.contact_person || '';
     const searchMatch =
@@ -111,6 +112,7 @@ export const CustomerManagement: React.FC = () => {
       legal.toLowerCase().includes(searchTerm.toLowerCase()) ||
       trade.toLowerCase().includes(searchTerm.toLowerCase()) ||
       gstin.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      arNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       city.toLowerCase().includes(searchTerm.toLowerCase()) ||
       contact.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -243,6 +245,7 @@ export const CustomerManagement: React.FC = () => {
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 text-xs">
                   <div><span className="text-slate-500">GSTIN: </span><span className="break-all font-mono font-semibold text-slate-800">{cust.gstin || 'Unregistered / B2C'}</span></div>
+                  <div><span className="text-slate-500">AR Number: </span><span className="font-semibold text-slate-800">{cust.ar_number || cust.arNumber || '—'}</span></div>
                   <div><span className="text-slate-500">Location: </span><span className="text-slate-800">{cust.city || '—'}, {cust.state || 'Maharashtra'} {cust.pincode ? `• ${cust.pincode}` : ''}</span></div>
                   {cust.billing_address && <div className="break-words text-slate-600">{cust.billing_address}</div>}
                   <div><span className="text-slate-500">Contact: </span><span className="text-slate-800">{cust.contact_person || '—'}</span></div>
@@ -281,6 +284,7 @@ export const CustomerManagement: React.FC = () => {
                           {cust.billing_address}
                         </div>
                       )}
+                      <div className="mt-1 text-[11px] text-slate-600">AR Number: <span className="font-semibold text-slate-800">{cust.ar_number || cust.arNumber || '—'}</span></div>
                     </td>
 
                     <td className="py-3.5 px-4">
