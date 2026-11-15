@@ -29,7 +29,7 @@ import {
   friendlyConstraintError,
 } from '../worker/index.ts';
 import { ApiService } from '../src/services/apiService.ts';
-import { generateInvoiceHTML } from '../worker/pdf.ts';
+import { generateInvoiceHTML, generateQuotationPDF } from '../worker/pdf.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -3839,6 +3839,44 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
     if (!html.includes(value)) throw new Error(`Invoice HTML missing ${value}`);
   }
   if (html.includes('Reverse Charge')) throw new Error('Reverse Charge still appears in invoice HTML');
+});
+
+
+assertTest('TC-108', 'Quotation PDF Fields', 'POSITIVE', 'Quotation PDF includes the AR Number snapshot from Customer Master', () => {
+  const pdf = generateQuotationPDF(
+    {
+      id: 1, legal_name: 'BABA ENTERPRISES', trade_name: 'BABA ENTERPRISES',
+      gstin: '27AGCPB8322L1ZG', pan: 'AGCPB8322L', state_name: 'Maharashtra', state_code: '27',
+      address_line1: 'Test Address', address_line2: 'Bhosari', city: 'Pune', pincode: '411039',
+      phone_primary: '9028260011', phone_secondary: '8788266934', email: 'babarubberplasticproducts@gmail.com',
+      bank_name: null, bank_branch: null, bank_account_no: null, bank_ifsc: null,
+      invoice_prefix: 'BE/26-27/', quotation_prefix: 'BE/QT/26-27/',
+      default_payment_terms: '30 days', default_invoice_notes: null, updated_at: '2026-11-15'
+    },
+    {
+      id: 'qt-ar-108', quotation_number: 'BE/QT/25-26/0001', quotation_prefix: 'BE/QT/25-26/',
+      sequence_number: 1, financial_year: '2025-26', quotation_date: '2026-03-15',
+      valid_until: '2026-04-14', buyer_name: 'Test Buyer', buyer_company: 'Test Buyer Ltd',
+      buyer_contact_person: 'Test Contact', buyer_fields_version: 2, buyer_gstin: null,
+      buyer_state_code: '27', buyer_state_name: 'Maharashtra', buyer_address: 'Test Road',
+      buyer_city: 'Pune', buyer_pincode: '411026', buyer_phone: '9000000000',
+      buyer_email: 'buyer@example.com', ar_number: 'AR/108', is_interstate: 0,
+      subtotal_gross_paise: 10000, total_discount_paise: 0, taxable_amount_paise: 10000,
+      cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0,
+      total_tax_paise: 1800, total_amount_paise: 11800, payment_terms: null,
+      delivery_terms: null, notes: null
+    },
+    [{
+      id: 'qti-ar-108', quotation_id: 'qt-ar-108', line_number: 1,
+      item_description: 'Test Item', hsn_code: '4016', quantity_microunits: 1000000,
+      unit_of_measure: 'NOS', unit_price_paise: 10000, gross_amount_paise: 10000,
+      discount_bps: 0, discount_amount_paise: 0, taxable_amount_paise: 10000,
+      gst_rate_bps: 1800, cgst_rate_bps: 900, sgst_rate_bps: 900, igst_rate_bps: 0,
+      cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0, total_amount_paise: 11800
+    }]
+  );
+  const pdfText = new TextDecoder().decode(pdf);
+  if (!pdfText.includes('AR Number: AR/108')) throw new Error('Quotation PDF is missing the customer AR Number');
 });
 
 console.log('\n===============================================================================');
