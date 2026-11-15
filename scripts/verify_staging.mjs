@@ -2553,15 +2553,65 @@ await assertTest('TC-79', 'Conversion Matching', 'POSITIVE', 'Converted invoice 
     SELLER_STATE_CODE: '27'
   };
 
-  // Backend must reject future-dated quotations before creating an invoice.
-  db.prepare("UPDATE quotations SET quotation_date = '2028-08-10', financial_year = '2028-29' WHERE id = 'qt-match-test'").run();
-  const futureRes = await worker.fetch(convertReq, workerEnv);
+  // Create a separate Accepted future-dated quotation. Its date is set while
+  // still Draft so the test respects the production quotation immutability rules.
+  db.exec(`
+    INSERT INTO quotations (
+      id, status, quotation_number, sequence_number, quotation_prefix, financial_year,
+      quotation_date, valid_until, is_interstate,
+      buyer_name, buyer_company, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
+      subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      apply_round_off, round_off_paise, total_amount_paise
+    )
+    SELECT
+      'qt-future-match-test', 'Draft', 'BE/QT/28-29/0003', 3, 'BE/QT/28-29/', '2028-29',
+      '2028-08-10', '2028-09-10', is_interstate,
+      buyer_name, buyer_company, buyer_address, buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
+      subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      apply_round_off, round_off_paise, total_amount_paise
+    FROM quotations WHERE id = 'qt-match-test';
+
+    INSERT INTO quotation_items (
+      id, quotation_id, line_number, item_description, quantity_microunits,
+      unit_price_paise, gross_amount_paise, discount_bps, discount_amount_paise,
+      taxable_amount_paise, gst_rate_bps, cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise, hsn_code
+    )
+    SELECT 'qti-future-match-1', 'qt-future-match-test', line_number, item_description, quantity_microunits,
+      unit_price_paise, gross_amount_paise, discount_bps, discount_amount_paise,
+      taxable_amount_paise, gst_rate_bps, cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise, hsn_code
+    FROM quotation_items WHERE quotation_id = 'qt-match-test';
+
+    INSERT INTO quotation_dispatches (
+      id, quotation_id, idempotency_key, provider_idempotency_key,
+      recipient_email, dispatch_status, provider_name, provider_message_id, completed_at
+    ) VALUES (
+      'disp-future-match-test', 'qt-future-match-test', 'idemp-future-match-test', 'prov-future-match-test',
+      'bhel@example.com', 'ACCEPTED', 'resend', 'msg_future_match_test', datetime('now')
+    );
+    UPDATE quotations
+    SET status = 'Sent', sent_at = datetime('now'),
+        sent_to_recipient = 'bhel@example.com', dispatch_id = 'disp-future-match-test'
+    WHERE id = 'qt-future-match-test';
+    UPDATE quotations
+    SET status = 'Accepted', client_approval_evidence = 'PO #BHEL-FUTURE-APPROVED',
+        accepted_at = datetime('now')
+    WHERE id = 'qt-future-match-test';
+  `);
+
+  const futureReq = new Request('https://staging.babaenterprises.internal/api/quotations/qt-future-match-test/convert-to-invoice', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const futureRes = await worker.fetch(futureReq, workerEnv);
   if (futureRes.status !== 422) {
     throw new Error(`Expected HTTP 422 for future-dated quotation conversion, got ${futureRes.status}`);
   }
-  const futureInvoiceCount = db.prepare("SELECT count(*) AS cnt FROM invoices WHERE reference_quotation_id = 'qt-match-test'").get().cnt;
+  const futureInvoiceCount = db.prepare("SELECT count(*) AS cnt FROM invoices WHERE reference_quotation_id = 'qt-future-match-test'").get().cnt;
   if (futureInvoiceCount !== 0) throw new Error('Future-dated quotation conversion created an invoice');
-  db.prepare("UPDATE quotations SET quotation_date = '2025-03-15', financial_year = '2024-25' WHERE id = 'qt-match-test'").run();
 
   const res = await worker.fetch(convertReq, {
     ...workerEnv
@@ -2770,8 +2820,8 @@ await assertTest('TC-84', 'Invoice HTML Auth', 'POSITIVE', 'GET /api/invoices/:i
   if (!htmlBodyHeader.includes('<!DOCTYPE html>') || !htmlBodyHeader.includes('BABA ENTERPRISES')) {
     throw new Error('Invoice HTML response missing expected HTML doctype or business name');
   }
-  if (!htmlBodyHeader.includes('BE/28-29/0001')) {
-    throw new Error('Invoice HTML response missing expected invoice number BE/28-29/0001');
+  if (!htmlBodyHeader.includes('BE/24-25/0001')) {
+    throw new Error('Invoice HTML response missing expected invoice number BE/24-25/0001');
   }
 });
 
