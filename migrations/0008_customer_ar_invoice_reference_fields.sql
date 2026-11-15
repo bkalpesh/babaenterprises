@@ -15,6 +15,18 @@ ALTER TABLE invoices ADD COLUMN purchase_order_number TEXT DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN purchase_order_date TEXT DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN issued_at TEXT DEFAULT NULL;
 
+-- Preserve the highest already-issued sequence in every historical financial year.
+-- Existing current-year baselines (for example FY 2026-27 = 161) are never reduced.
+INSERT INTO invoice_sequence_baselines (financial_year, last_sequence_number, updated_at)
+SELECT financial_year, max(sequence_number), datetime('now')
+FROM invoices
+WHERE status IN ('Issued', 'Cancelled')
+  AND sequence_number IS NOT NULL
+GROUP BY financial_year
+ON CONFLICT(financial_year) DO UPDATE SET
+  last_sequence_number = max(invoice_sequence_baselines.last_sequence_number, excluded.last_sequence_number),
+  updated_at = datetime('now');
+
 -- Capture the real server-side issuance timestamp and an immutable audit event.
 -- The timestamp is intentionally independent of the user-selected invoice_date.
 CREATE TRIGGER trg_invoice_issued_timestamp_and_audit
