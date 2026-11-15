@@ -97,6 +97,8 @@ export interface Customer {
   contactPerson: string;
   mobile: string;
   email?: string | null;
+  arNumber?: string | null;
+  ar_number?: string | null;
   notes?: string | null;
   isActive: boolean;
   createdAt?: string;
