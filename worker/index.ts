@@ -2191,9 +2191,18 @@ export const worker = {
           );
         }
 
+        // Invoice conversion inherits the quotation date. Backdating is allowed,
+        // but future-dated quotations must not create invoices.
+        const invoiceDate = quote.quotation_date;
+        if (!isValidInvoiceDate(invoiceDate)) {
+          return errorResponse('Quotation date is invalid. Correct the quotation date before converting it to an invoice.', 422);
+        }
+        if (invoiceDate > indiaDateString()) {
+          return errorResponse('Future-dated quotations cannot be converted into invoices. Set the quotation date to today or an earlier date before conversion.', 422);
+        }
+
         const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
         const isInterstate = quote.buyer_state_code !== env.SELLER_STATE_CODE ? 1 : 0;
-        const invoiceDate = indiaDateString();
         const targetFY = getFinancialYear(invoiceDate);
         const invoicePrefix = getInvoicePrefix(targetFY);
 
