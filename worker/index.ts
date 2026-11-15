@@ -725,6 +725,7 @@ export const worker = {
         const country = b.country?.trim() || 'India';
         const email = b.email?.trim() || null;
         const arNumber = b.ar_number?.trim() || b.arNumber?.trim() || null;
+        if (arNumber && arNumber.length > 100) return errorResponse('AR Number cannot exceed 100 characters.', 422);
         const notes = b.notes?.trim() || null;
 
         await env.DB.prepare(`
@@ -764,6 +765,7 @@ export const worker = {
         const arNumber = b.ar_number !== undefined || b.arNumber !== undefined
           ? ((b.ar_number ?? b.arNumber)?.trim() || null)
           : existing.ar_number;
+        if (arNumber && arNumber.length > 100) return errorResponse('AR Number cannot exceed 100 characters.', 422);
         const notes = b.notes !== undefined ? (b.notes?.trim() || null) : existing.notes;
         const regType = b.gst_registration_type || b.gstRegistrationType || existing.gst_registration_type;
 
@@ -922,6 +924,7 @@ export const worker = {
             ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
             : null;
           const arNumber = customerArRow?.ar_number || null;
+          if (arNumber && arNumber.length > 100) return errorResponse('Customer AR Number cannot exceed 100 characters.', 422);
 
           // Build batch operations with optional customer_id and sequence log
           const batchOps: any[] = [];
@@ -1243,6 +1246,7 @@ export const worker = {
           ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
           : null;
         const arNumber = customerArRow?.ar_number || null;
+        if (arNumber && arNumber.length > 100) return errorResponse('Customer AR Number cannot exceed 100 characters.', 422);
 
         const batchStmts: any[] = [
           env.DB.prepare('DELETE FROM quotation_items WHERE quotation_id = ?').bind(quoteId),
@@ -2441,6 +2445,8 @@ export const worker = {
           const gatePassDate = b.gate_pass_date || null;
           const purchaseOrderNumber = String(b.purchase_order_number || '').trim() || null;
           const purchaseOrderDate = b.purchase_order_date || null;
+          if (gatePassNumber && gatePassNumber.length > 100) return errorResponse('Gate Pass Number cannot exceed 100 characters.', 422);
+          if (purchaseOrderNumber && purchaseOrderNumber.length > 100) return errorResponse('Purchase Order Number cannot exceed 100 characters.', 422);
           if (gatePassDate && !isValidInvoiceDate(gatePassDate)) return errorResponse('Gate Pass Date must be a valid calendar date.', 422);
           if (purchaseOrderDate && !isValidInvoiceDate(purchaseOrderDate)) return errorResponse('Purchase Order Date must be a valid calendar date.', 422);
           const buyerStateName = b.buyer_state_name || null;
@@ -2675,6 +2681,8 @@ export const worker = {
         const gatePassDate = b.gate_pass_date !== undefined ? (b.gate_pass_date || null) : (invoice.gate_pass_date || null);
         const purchaseOrderNumber = b.purchase_order_number !== undefined ? (String(b.purchase_order_number || '').trim() || null) : (invoice.purchase_order_number || null);
         const purchaseOrderDate = b.purchase_order_date !== undefined ? (b.purchase_order_date || null) : (invoice.purchase_order_date || null);
+        if (gatePassNumber && gatePassNumber.length > 100) return errorResponse('Gate Pass Number cannot exceed 100 characters.', 422);
+        if (purchaseOrderNumber && purchaseOrderNumber.length > 100) return errorResponse('Purchase Order Number cannot exceed 100 characters.', 422);
         if (gatePassDate && !isValidInvoiceDate(gatePassDate)) return errorResponse('Gate Pass Date must be a valid calendar date.', 422);
         if (purchaseOrderDate && !isValidInvoiceDate(purchaseOrderDate)) return errorResponse('Purchase Order Date must be a valid calendar date.', 422);
         const buyerStateName = b.buyer_state_name || invoice.buyer_state_name || null;
