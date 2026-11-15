@@ -639,9 +639,9 @@ export const worker = {
         }
 
         if (q) {
-          conditions.push('(lower(legal_name) LIKE ? OR lower(coalesce(trade_name, "")) LIKE ? OR lower(coalesce(gstin, "")) LIKE ? OR lower(mobile) LIKE ? OR lower(contact_person) LIKE ? OR lower(city) LIKE ?)');
+          conditions.push('(lower(legal_name) LIKE ? OR lower(coalesce(trade_name, "")) LIKE ? OR lower(coalesce(gstin, "")) LIKE ? OR lower(coalesce(ar_number, "")) LIKE ? OR lower(mobile) LIKE ? OR lower(contact_person) LIKE ? OR lower(city) LIKE ?)');
           const term = `%${q}%`;
-          params.push(term, term, term, term, term, term);
+          params.push(term, term, term, term, term, term, term);
         }
 
         if (conditions.length > 0) {
