@@ -89,7 +89,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
       setCustomers(data.filter((c) => c.is_active));
       if (initialData) {
         const linkedCustomer = data.find((c) => c.id === initialData.customer_id);
-        setArNumber(linkedCustomer?.ar_number || linkedCustomer?.arNumber || initialData.ar_number || '');
+        setArNumber(linkedCustomer ? (linkedCustomer.ar_number || linkedCustomer.arNumber || '') : (initialData.ar_number || ''));
       }
     } catch {
       // Offline fallback: retain the AR snapshot already stored on the draft.
