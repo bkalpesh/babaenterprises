@@ -3913,6 +3913,52 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
 });
 
 
+
+assertTest('TC-109', 'Invoice NULL Reference Fields', 'POSITIVE', 'Invoice preview and print HTML always show all five reference labels when database values are NULL', () => {
+  const html = generateInvoiceHTML(
+    { legal_name: 'BABA ENTERPRISES' } as any,
+    {
+      status: 'Issued',
+      invoice_number: 'BE/26-27/0162',
+      invoice_date: '2026-11-15',
+      financial_year: '2026-27',
+      payment_status: 'Unpaid',
+      is_interstate: 0,
+      place_of_supply: 'Maharashtra (27)',
+      buyer_name: 'Test Buyer',
+      buyer_address: 'Test Road',
+      buyer_city: 'Pune',
+      buyer_state_name: 'Maharashtra',
+      buyer_state_code: '27',
+      buyer_pincode: '411026',
+      buyer_gstin: null,
+      total_invoice_amount_paise: 10000,
+      taxable_amount_paise: 10000,
+      cgst_amount_paise: 0,
+      sgst_amount_paise: 0,
+      igst_amount_paise: 0,
+      total_tax_paise: 0,
+      round_off_paise: 0,
+      ar_number: null,
+      gate_pass_number: null,
+      gate_pass_date: null,
+      purchase_order_number: null,
+      purchase_order_date: null,
+    } as any,
+    []
+  );
+  const expectedBlankRows = [
+    '<div class="meta-line"><span class="bold">AR Number:</span> </div>',
+    '<div class="meta-line"><span class="bold">Gate Pass Number:</span> </div>',
+    '<div class="meta-line"><span class="bold">Gate Pass Date:</span> </div>',
+    '<div class="meta-line"><span class="bold">Purchase Order Number:</span> </div>',
+    '<div class="meta-line"><span class="bold">Purchase Order Date:</span> </div>',
+  ];
+  for (const row of expectedBlankRows) {
+    if (!html.includes(row)) throw new Error(`Invoice HTML did not render the required blank reference row: ${row}`);
+  }
+});
+
 assertTest('TC-108', 'Quotation PDF Fields', 'POSITIVE', 'Quotation PDF includes the AR Number snapshot from Customer Master', () => {
   const pdf = generateQuotationPDF(
     {
