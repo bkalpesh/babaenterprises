@@ -2779,8 +2779,11 @@ export const worker = {
             VALUES (?, ?, ?, 'ADMIN_STAGING')
           `).bind(fy, nextSequence, invId).run();
         } catch (seqErr: any) {
-          if (String(seqErr).includes('no such table: invoice_sequence_log')) {
-            // Resilient fallback if staging D1 sequence log table not yet applied
+          if (
+            String(seqErr).includes('no such table: invoice_sequence_log') ||
+            String(seqErr).includes('no such table: invoice_sequence_baselines')
+          ) {
+            // Resilient fallback if the sequence log or optional baseline table is not yet applied
             const maxSeqRow = await env.DB.prepare(
               'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoices WHERE financial_year = ? AND sequence_number IS NOT NULL'
             ).bind(fy).first<{ maxSeq: number }>();
