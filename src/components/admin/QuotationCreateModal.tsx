@@ -92,7 +92,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     if (initialData) {
       setSelectedCustomerId(initialData.customer_id || '');
       const linkedCustomer = customerMaster.find((c) => c.id === initialData.customer_id);
-      setArNumber(linkedCustomer?.ar_number || linkedCustomer?.arNumber || initialData.ar_number || '');
+      setArNumber(linkedCustomer ? (linkedCustomer.ar_number || linkedCustomer.arNumber || '') : (initialData.ar_number || ''));
       const isLegacyBuyerRecord = Number(initialData.buyer_fields_version || 1) < 2;
       setBuyerName(isLegacyBuyerRecord ? (initialData.buyer_company || initialData.buyer_name || '') : (initialData.buyer_name || ''));
       setBuyerCompany(isLegacyBuyerRecord ? '' : (initialData.buyer_company || ''));
