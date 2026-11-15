@@ -2198,6 +2198,10 @@ export const worker = {
         const invoicePrefix = getInvoicePrefix(targetFY);
 
         const customerId = (quote as any).customer_id || null;
+        const conversionCustomerAr = customerId
+          ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
+          : null;
+        const invoiceArNumber = conversionCustomerAr?.ar_number || null;
         const isLegacyBuyerRecord = Number(quote.buyer_fields_version || 1) < 2;
         const invoiceBuyerName = isLegacyBuyerRecord ? (quote.buyer_company || quote.buyer_name) : quote.buyer_name;
         const invoiceBuyerTradeName = isLegacyBuyerRecord ? null : quote.buyer_company;
@@ -2221,7 +2225,7 @@ export const worker = {
               targetFY,
               invoicePrefix,
               invoiceDate,
-              quote.ar_number || null,
+              invoiceArNumber,
               null,
               null,
               null,
@@ -2310,7 +2314,7 @@ export const worker = {
                 targetFY,
                 invoicePrefix,
                 invoiceDate,
-                quote.ar_number || null,
+                invoiceArNumber,
                 gatePassNumber,
                 gatePassDate,
                 purchaseOrderNumber,
