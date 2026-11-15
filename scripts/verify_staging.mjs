@@ -48,6 +48,8 @@ const customerSql = readFileSync(resolve(__dirname, '../migrations/0003_customer
 const pdfStorageSql = readFileSync(resolve(__dirname, '../migrations/0004_quotation_pdf_storage.sql'), 'utf-8');
 const buyerAlignSql = readFileSync(resolve(__dirname, '../migrations/0005_quotation_buyer_alignment.sql'), 'utf-8');
 const baselineSql = readFileSync(resolve(__dirname, '../migrations/0006_invoice_sequence_baselines.sql'), 'utf-8');
+const emailSql = readFileSync(resolve(__dirname, '../migrations/0007_update_business_email.sql'), 'utf-8');
+const customerArInvoiceSql = readFileSync(resolve(__dirname, '../migrations/0008_customer_ar_invoice_reference_fields.sql'), 'utf-8');
 
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
@@ -103,6 +105,24 @@ try {
   console.log('✓ Migration 0006_invoice_sequence_baselines.sql applied (invoice_sequence_baselines table & trigger)\n');
 } catch (err) {
   console.error('✗ Migration 0006 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0007 Business Email
+try {
+  db.exec(emailSql);
+  console.log('✓ Migration 0007_update_business_email.sql applied');
+} catch (err) {
+  console.error('✗ Migration 0007 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0008 Customer AR & Invoice References
+try {
+  db.exec(customerArInvoiceSql);
+  console.log('✓ Migration 0008_customer_ar_invoice_reference_fields.sql applied');
+} catch (err) {
+  console.error('✗ Migration 0008 failed to load:', err);
   process.exit(1);
 }
 
@@ -3726,6 +3746,99 @@ assertTest('TC-102', 'Invoice Print Borders', 'POSITIVE', 'generateInvoiceHTML e
       throw new Error(`Expected invoice HTML border/layout snippet missing: ${snippet}`);
     }
   }
+});
+
+
+assertTest('TC-103', 'Customer AR', 'POSITIVE', 'Migration 0008 adds customer, quotation and invoice AR/reference fields', () => {
+  const customerCols = db.prepare('PRAGMA table_info(customers)').all().map((c) => c.name);
+  const quotationCols = db.prepare('PRAGMA table_info(quotations)').all().map((c) => c.name);
+  const invoiceCols = db.prepare('PRAGMA table_info(invoices)').all().map((c) => c.name);
+  for (const col of ['ar_number']) if (!customerCols.includes(col)) throw new Error(`customers.${col} missing`);
+  for (const col of ['ar_number']) if (!quotationCols.includes(col)) throw new Error(`quotations.${col} missing`);
+  for (const col of ['ar_number', 'gate_pass_number', 'gate_pass_date', 'purchase_order_number', 'purchase_order_date', 'issued_at']) {
+    if (!invoiceCols.includes(col)) throw new Error(`invoices.${col} missing`);
+  }
+  db.prepare("INSERT INTO customers (id, legal_name, state_code, ar_number) VALUES (?, ?, ?, ?)").run('cust-ar-103', 'AR Test Customer', '27', 'AR/103');
+  const customer = db.prepare("SELECT ar_number FROM customers WHERE id = ?").get('cust-ar-103');
+  if (customer.ar_number !== 'AR/103') throw new Error('Customer AR Number did not persist');
+});
+
+assertTest('TC-104', 'Backdated Invoice', 'POSITIVE', 'Backdated FY 2025-26 invoice issues with its own prefix, actual issued_at and audit event', () => {
+  seedDraftInvoice('inv-backdated-104', '27AAACB2026R1Z9', 0, '27', '2025-26');
+  db.prepare(`
+    UPDATE invoices SET invoice_date = '2025-03-15', ar_number = 'AR/103',
+      gate_pass_number = 'GP/103', gate_pass_date = '2025-03-14',
+      purchase_order_number = 'PO/103', purchase_order_date = '2025-03-10'
+    WHERE id = 'inv-backdated-104'
+  `).run();
+  db.prepare("INSERT INTO invoice_sequence_log (financial_year, sequence_number, invoice_id, allocated_by) VALUES ('2025-26', 1, 'inv-backdated-104', 'TEST_ADMIN')").run();
+  const invoice = db.prepare("SELECT * FROM invoices WHERE id = 'inv-backdated-104'").get();
+  if (invoice.invoice_number !== 'BE/25-26/0001') throw new Error(`Unexpected backdated invoice number: ${invoice.invoice_number}`);
+  if (invoice.invoice_date !== '2025-03-15') throw new Error('Selected backdated invoice date was not preserved');
+  if (!invoice.issued_at) throw new Error('Actual server issuance timestamp was not populated');
+  if (invoice.ar_number !== 'AR/103' || invoice.gate_pass_number !== 'GP/103' || invoice.purchase_order_number !== 'PO/103') {
+    throw new Error('AR / Gate Pass / Purchase Order values were not preserved');
+  }
+  const audit = db.prepare("SELECT count(*) AS count FROM audit_logs WHERE entity_type = 'invoice' AND entity_id = 'inv-backdated-104' AND action = 'ISSUED'").get();
+  if (audit.count !== 1) throw new Error('Invoice issuance audit event missing');
+});
+
+assertTest('TC-105', 'Invoice Immutability', 'NEGATIVE', 'Issued invoice Gate Pass and Purchase Order references cannot be edited', () => {
+  let rejected = false;
+  try {
+    db.prepare("UPDATE invoices SET gate_pass_number = 'GP-CHANGED' WHERE id = 'inv-backdated-104'").run();
+  } catch (err) {
+    rejected = String(err.message).includes('ERR_ISSUED_INVOICE_IMMUTABLE');
+  }
+  if (!rejected) throw new Error('Expected issued invoice reference immutability trigger to reject the update');
+});
+
+assertTest('TC-106', 'Financial Year', 'POSITIVE', 'Invoice financial year is determined from selected date across March/April boundary', () => {
+  if (getFinancialYear('2025-03-31') !== '2024-25') throw new Error('March date mapped to wrong FY');
+  if (getFinancialYear('2025-04-01') !== '2025-26') throw new Error('April date mapped to wrong FY');
+  if (getFinancialYear('2026-11-15') !== '2026-27') throw new Error('Current FY mapping incorrect');
+});
+
+assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR, Gate Pass and Purchase Order fields and omits Reverse Charge', () => {
+  const html = generateInvoiceHTML(
+    {
+      id: 1, legal_name: 'BABA ENTERPRISES', trade_name: 'BABA ENTERPRISES',
+      gstin: '27AGCPB8322L1ZG', pan: 'AGCPB8322L', state_name: 'Maharashtra', state_code: '27',
+      address_line1: 'Test Address', address_line2: 'Bhosari', city: 'Pune', pincode: '411039',
+      phone_primary: '9028260011', phone_secondary: '8788266934', email: 'babarubberplasticproducts@gmail.com',
+      bank_name: null, bank_branch: null, bank_account_no: null, bank_ifsc: null,
+      invoice_prefix: 'BE/26-27/', quotation_prefix: 'BE/QT/26-27/',
+      default_payment_terms: null, default_invoice_notes: null, updated_at: '2026-11-15'
+    },
+    {
+      id: 'inv-pdf-fields-107', status: 'Draft', invoice_number: null, invoice_prefix: 'BE/25-26/',
+      sequence_number: null, invoice_date: '2025-03-15', financial_year: '2024-25',
+      seller_gstin: '27AGCPB8322L1ZG', seller_state_code: '27', seller_legal_name: 'BABA ENTERPRISES',
+      seller_trade_name: 'BABA ENTERPRISES', seller_address: 'Test Address',
+      buyer_name: 'Test Buyer', buyer_trade_name: null, buyer_address: 'Test Road', buyer_city: 'Pune',
+      buyer_state_name: 'Maharashtra', buyer_state_code: '27', buyer_pincode: '411026',
+      buyer_gstin: '27AAACB2026R1Z9', is_interstate: 0, place_of_supply: 'Maharashtra (27)',
+      reference_quotation_id: null, subtotal_gross_paise: 10000, total_discount_paise: 0,
+      taxable_amount_paise: 10000, cgst_amount_paise: 900, sgst_amount_paise: 900,
+      igst_amount_paise: 0, total_tax_paise: 1800, apply_round_off: 0, round_off_paise: 0,
+      total_invoice_amount_paise: 11800, payment_status: 'Unpaid', payment_mode: null,
+      payment_reference: null, payment_received_date: null, cancellation_reason: null,
+      cancelled_at: null, cancelled_by: null, ar_number: 'AR/103', gate_pass_number: 'GP/103',
+      gate_pass_date: '2025-03-14', purchase_order_number: 'PO/103', purchase_order_date: '2025-03-10'
+    },
+    [{
+      id: 'item-107', invoice_id: 'inv-pdf-fields-107', line_number: 1,
+      item_description: 'Test Item', hsn_code: '4016', quantity_microunits: 1000000,
+      unit_of_measure: 'NOS', unit_price_paise: 10000, gross_amount_paise: 10000,
+      discount_bps: 0, discount_amount_paise: 0, taxable_amount_paise: 10000,
+      gst_rate_bps: 1800, cgst_rate_bps: 900, sgst_rate_bps: 900, igst_rate_bps: 0,
+      cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0, total_amount_paise: 11800
+    }]
+  );
+  for (const value of ['AR/103', 'GP/103', '2025-03-14', 'PO/103', '2025-03-10']) {
+    if (!html.includes(value)) throw new Error(`Invoice HTML missing ${value}`);
+  }
+  if (html.includes('Reverse Charge')) throw new Error('Reverse Charge still appears in invoice HTML');
 });
 
 console.log('\n===============================================================================');
