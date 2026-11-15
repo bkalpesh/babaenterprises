@@ -3,10 +3,9 @@
 -- This permanently deletes staging quotations, invoices, their items, dispatch rows,
 -- and their sequence allocations. Products, customers, business settings, and audit_logs remain.
 -- Do NOT run against production.
--- Run the complete script as one operation. If your SQL console rejects BEGIN/COMMIT,
--- stop and use a D1 migration/batch execution rather than running statements piecemeal.
+-- D1 does not accept explicit BEGIN/COMMIT. Execute the complete file in one run.
+-- If any statement errors, stop and do not retry blindly; inspect the database first.
 
-BEGIN TRANSACTION;
 
 CREATE TABLE IF NOT EXISTS invoice_sequence_baselines (
   financial_year TEXT PRIMARY KEY,
@@ -783,4 +782,3 @@ BEGIN
   SELECT RAISE(ABORT, 'ERR_AUDIT_LOG_IMMUTABLE: Audit log records are immutable and cannot be updated.');
 END;
 
-COMMIT;
