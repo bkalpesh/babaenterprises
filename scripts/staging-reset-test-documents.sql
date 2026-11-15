@@ -97,16 +97,6 @@ BEGIN
   END;
 END;
 
-  -- 2. Assert strictly contiguous sequence progression
-  SELECT CASE
-    WHEN NEW.sequence_number != (
-      SELECT coalesce(max(sequence_number), 0) + 1
-      FROM invoice_sequence_log
-      WHERE financial_year = NEW.financial_year
-    ) THEN
-      RAISE(ABORT, 'ERR_SEQUENCE_GAP: Sequence number must be strictly next sequential integer (no duplicates, skipped, or out-of-order values).')
-  END;
-END;
 
 -- TRIGGER 4: trg_prevent_quotation_sequence_log_deletion
 CREATE TRIGGER trg_prevent_quotation_sequence_log_deletion
