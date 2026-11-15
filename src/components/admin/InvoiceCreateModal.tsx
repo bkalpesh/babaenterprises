@@ -92,7 +92,8 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
         setArNumber(linkedCustomer?.ar_number || linkedCustomer?.arNumber || initialData.ar_number || '');
       }
     } catch {
-      // Offline fallback
+      // Offline fallback: retain the AR snapshot already stored on the draft.
+      if (initialData) setArNumber(initialData.ar_number || '');
     }
 
     if (initialData) {
@@ -328,10 +329,10 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
       const payload = {
         customer_id: selectedCustomerId || undefined,
         invoice_date: invoiceDate,
-        gate_pass_number: gatePassNumber.trim() || undefined,
-        gate_pass_date: gatePassDate || undefined,
-        purchase_order_number: purchaseOrderNumber.trim() || undefined,
-        purchase_order_date: purchaseOrderDate || undefined,
+        gate_pass_number: gatePassNumber.trim() || null,
+        gate_pass_date: gatePassDate || null,
+        purchase_order_number: purchaseOrderNumber.trim() || null,
+        purchase_order_date: purchaseOrderDate || null,
         buyer_name: buyerName.trim(),
         buyer_trade_name: buyerTradeName.trim() || undefined,
         buyer_address: buyerAddress.trim() || undefined,
