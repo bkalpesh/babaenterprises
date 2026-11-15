@@ -29,6 +29,7 @@ import {
   friendlyConstraintError,
 } from '../worker/index.ts';
 import { ApiService } from '../src/services/apiService.ts';
+import { generateInvoiceHTML } from '../worker/pdf.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -3622,6 +3623,107 @@ assertTest('TC-101', 'Error Classification', 'NEGATIVE', 'friendlyConstraintErro
     const mapped = friendlyConstraintError(item.err);
     if (!mapped || !mapped.includes(item.expect)) {
       throw new Error(`Business error "${item.err.message}" was not translated properly: ${mapped}`);
+    }
+  }
+});
+
+assertTest('TC-102', 'Invoice Print Borders', 'POSITIVE', 'generateInvoiceHTML enforces collapsed section borders, clone outer border across page breaks, print-safe gridlines, and summary top border', () => {
+  const html = generateInvoiceHTML(
+    {
+      id: 1,
+      legal_name: 'BABA ENTERPRISES',
+      trade_name: 'BABA ENTERPRISES',
+      gstin: '27AGCPB8322L1ZG',
+      pan: 'AGCPB8322L',
+      state_name: 'Maharashtra',
+      state_code: '27',
+      address_line1: 'Sr. No. 229/2, Shree Gajanan Housing Society',
+      address_line2: 'Khandobamal, Bhosari',
+      city: 'Pune',
+      pincode: '411039',
+      phone_primary: '9028260011',
+      phone_secondary: '8788266934',
+      email: 'babarubberplasticproducts@gmail.com',
+      bank_name: 'HDFC Bank',
+      bank_branch: 'Bhosari MIDC',
+      bank_account_no: '50200012345678',
+      bank_ifsc: 'HDFC0001234',
+      invoice_prefix: 'BE/26-27/',
+      quotation_prefix: 'BE/QT/26-27/',
+      default_payment_terms: '30 days',
+      default_invoice_notes: null,
+      updated_at: '2026-11-15 13:22:02',
+    },
+    {
+      id: 'inv-border-check',
+      invoice_number: 'BE/26-27/0162',
+      invoice_date: '2026-11-15',
+      financial_year: '2026-27',
+      status: 'Issued',
+      payment_status: 'Unpaid',
+      is_interstate: 0,
+      place_of_supply: 'Maharashtra (27)',
+      buyer_name: 'Test Industrial Buyer',
+      buyer_trade_name: null,
+      buyer_address: 'MIDC Sector 7, Bhosari',
+      buyer_city: 'Pune',
+      buyer_state_name: 'Maharashtra',
+      buyer_state_code: '27',
+      buyer_pincode: '411026',
+      buyer_gstin: '27AAACB1234F1Z5',
+      subtotal_gross_paise: 100000,
+      total_discount_paise: 0,
+      taxable_amount_paise: 100000,
+      cgst_amount_paise: 9000,
+      sgst_amount_paise: 9000,
+      igst_amount_paise: 0,
+      total_tax_paise: 18000,
+      round_off_paise: 0,
+      apply_round_off: 0,
+      total_invoice_amount_paise: 118000,
+    },
+    [
+      {
+        id: 'item-1',
+        invoice_id: 'inv-border-check',
+        line_number: 1,
+        item_description: 'EPDM Rubber Gasket',
+        hsn_code: '40169320',
+        quantity_microunits: 10000000,
+        unit_of_measure: 'NOS',
+        unit_price_paise: 10000,
+        discount_paise: 0,
+        taxable_amount_paise: 100000,
+        gst_rate_bps: 1800,
+        cgst_rate_bps: 900,
+        cgst_amount_paise: 9000,
+        sgst_rate_bps: 900,
+        sgst_amount_paise: 9000,
+        igst_rate_bps: 0,
+        igst_amount_paise: 0,
+        total_amount_paise: 118000,
+      },
+    ]
+  );
+
+  const requiredSnippets = [
+    'box-decoration-break: clone;',
+    '.header-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; }',
+    '.buyer-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a;',
+    '.footer-table { width: 100%; border-collapse: collapse; border-top: 1.5px solid #0f172a;',
+    '.items-table th { background: #102F59; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 6px 4px; text-align: center; border-top: 1px solid #0f172a; border-bottom: 1.5px solid #0f172a;',
+    '.items-table td { padding: 6px 4px; border-right: 1px solid #64748b; border-bottom: 1px solid #64748b;',
+    '.items-table tbody tr:last-child td { border-bottom: 1.5px solid #0f172a; }',
+    '.invoice-card.single-page .summary-table {',
+    'border-top: 1.5px solid #0f172a;',
+    'border-top: 1px dashed #64748b;',
+    'border-top: 1px solid #475569;',
+    'babarubberplasticproducts@gmail.com',
+    'HDFC Bank',
+  ];
+  for (const snippet of requiredSnippets) {
+    if (!html.includes(snippet)) {
+      throw new Error(`Expected invoice HTML border/layout snippet missing: ${snippet}`);
     }
   }
 });

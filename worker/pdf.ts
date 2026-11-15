@@ -73,12 +73,12 @@ export function generateInvoiceHTML(
     @page { size: A4 portrait; margin: 12mm 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #1e293b; background: #fff; line-height: 1.4; }
-    .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; }
+    .invoice-card { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #0f172a; background: #fff; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
     .invoice-header, .invoice-footer { width: 100%; background: #fff; }
-    .tricolor-rule { height: 9px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
+    .tricolor-rule { height: 9px; width: 100%; background: linear-gradient(to right, #FF9933 0 33.333%, #FFFFFF 33.333% 66.666%, #138808 66.666% 100%); border-top: 1px solid #94a3b8; border-bottom: 1px solid #94a3b8; }
     .seller-brand { display: flex; align-items: center; justify-content: flex-start; min-height: 88px; margin-bottom: 2px; }
     .seller-logo { display: block; width: 275px; height: 90px; object-fit: contain; object-position: left center; }
-    .header-table { width: 100%; border-bottom: 1.5px solid #0f172a; }
+    .header-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; }
     .header-table td { padding: 8px 12px; vertical-align: top; }
     .seller-col { width: 60%; border-right: 1.5px solid #0f172a; }
     .doc-col { width: 40%; background: #f8fafc; }
@@ -86,20 +86,21 @@ export function generateInvoiceHTML(
     .tagline { font-size: 10px; font-weight: 600; color: #475569; margin-bottom: 4px; }
     .meta-line { font-size: 10.5px; margin-bottom: 2px; }
     .bold { font-weight: 700; color: #0f172a; }
-    .doc-title { font-size: 15px; font-weight: 800; color: #102F59; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+    .doc-title { font-size: 15px; font-weight: 800; color: #102F59; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #94a3b8; padding-bottom: 4px; }
     
-    .buyer-table { width: 100%; border-bottom: 1.5px solid #0f172a; background: #fff; }
+    .buyer-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; background: #fff; }
     .buyer-table td { padding: 8px 12px; vertical-align: top; width: 50%; }
     .buyer-table td:first-child { border-right: 1.5px solid #0f172a; }
     .buyer-address-line { line-height: 1.5; overflow-wrap: anywhere; white-space: normal; margin-bottom: 2px; }
     
     .items-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #0f172a; }
-    .items-table th { background: #102F59; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 6px 4px; text-align: center; border-right: 1px solid #cbd5e1; }
+    .items-table th { background: #102F59; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 6px 4px; text-align: center; border-top: 1px solid #0f172a; border-bottom: 1.5px solid #0f172a; border-right: 1px solid #cbd5e1; }
     .items-table th:last-child { border-right: none; }
-    .items-table td { padding: 6px 4px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #e2e8f0; font-size: 10px; vertical-align: top; }
+    .items-table td { padding: 6px 4px; border-right: 1px solid #64748b; border-bottom: 1px solid #64748b; font-size: 10px; vertical-align: top; }
     .items-table td:last-child { border-right: none; }
+    .items-table tbody tr:last-child td { border-bottom: 1.5px solid #0f172a; }
     .items-table thead { display: table-header-group; }
-    .items-table tr, .summary-table, .summary-table tr, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+    .items-table tr, .summary-table, .summary-table tr, .invoice-footer, .footer-table, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
     .text-left { text-align: left; }
@@ -111,7 +112,7 @@ export function generateInvoiceHTML(
     .total-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10.5px; }
     .grand-total { border-top: 1.5px solid #0f172a; padding-top: 4px; margin-top: 4px; font-size: 12.5px; font-weight: 800; color: #102F59; }
     
-    .footer-table { width: 100%; border-top: 1.5px solid #0f172a; background: #f8fafc; }
+    .footer-table { width: 100%; border-collapse: collapse; border-top: 1.5px solid #0f172a; background: #f8fafc; }
     .footer-table td { padding: 8px 12px; vertical-align: bottom; }
     .terms-col { width: 60%; border-right: 1.5px solid #0f172a; font-size: 9px; color: #475569; }
     .sign-col { width: 40%; text-align: center; font-size: 10px; }
@@ -128,21 +129,21 @@ export function generateInvoiceHTML(
        * the header/footer to detach from the content and appear on wrong pages.
        * The header now starts page 1; the footer follows totals on the final page.
        */
-      .invoice-card { display: block; width: 100%; max-width: none; margin: 0; border: 1.5px solid #0f172a; overflow: visible; }
+      .invoice-card { display: block; width: 100%; max-width: none; margin: 0; border: 1.5px solid #0f172a; overflow: visible; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
       .invoice-header, .invoice-footer { position: static; display: block; width: 100%; }
       .buyer-table, .items-table, .summary-table, .footer-table { width: 100%; }
       .items-table { page-break-after: auto; }
       .items-table thead { display: table-header-group; }
       .items-table tbody { display: table-row-group; }
       .items-table tr { break-inside: avoid; page-break-inside: avoid; }
-      .summary-table, .summary-table tr, .footer-table, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .summary-table, .summary-table tr, .invoice-footer, .footer-table, .footer-table tr { break-inside: avoid; page-break-inside: avoid; }
       /*
        * Only invoices that fit on one A4 page receive the adaptive layout.
-       * The item table grows into otherwise unused vertical space; multi-page
-       * invoices retain compact rows and natural page flow.
+       * The item table stays compact while spare page height sits below it,
+       * and the summary block restores an explicit top border above totals.
        */
       .invoice-card.single-page {
-        min-height: 273mm;
+        min-height: 271mm;
         display: flex;
         flex-direction: column;
       }
@@ -154,6 +155,9 @@ export function generateInvoiceHTML(
       .invoice-card.single-page .invoice-fill-space {
         flex: 1 1 auto;
         min-height: 12mm;
+      }
+      .invoice-card.single-page .summary-table {
+        border-top: 1.5px solid #0f172a;
       }
       .cancelled-watermark { position: absolute; }
     }
@@ -284,13 +288,13 @@ export function generateInvoiceHTML(
             <div class="bold" style="color: #102F59; font-size: 11px;">${numberToWords(invoice.total_invoice_amount_paise)}</div>
           </div>
           ${settings.bank_account_no ? `
-            <div style="border-top: 1px dashed #cbd5e1; padding-top: 6px; font-size: 9.5px;">
+            <div style="border-top: 1px dashed #64748b; padding-top: 6px; font-size: 9.5px;">
               <div class="bold">Bank Remittance Details:</div>
               <div>Bank: ${settings.bank_name || 'N/A'}, Branch: ${settings.bank_branch || 'N/A'}</div>
               <div>A/C No: ${settings.bank_account_no}, IFSC: ${settings.bank_ifsc || 'N/A'}</div>
             </div>
           ` : `
-            <div style="border-top: 1px dashed #cbd5e1; padding-top: 6px; font-size: 9px; color: #64748b;">
+            <div style="border-top: 1px dashed #64748b; padding-top: 6px; font-size: 9px; color: #64748b;">
               Bank settlement details available on direct corporate confirmation.
             </div>
           `}
@@ -347,7 +351,7 @@ export function generateInvoiceHTML(
         <td class="sign-col">
           <div class="bold" style="color: #102F59;">For ${settings.legal_name}</div>
           <div class="sign-space"></div>
-          <div class="bold" style="border-top: 1px solid #94a3b8; display: inline-block; padding-top: 3px; min-width: 140px;">
+          <div class="bold" style="border-top: 1px solid #475569; display: inline-block; padding-top: 3px; min-width: 140px;">
             Authorized Signatory
           </div>
         </td>
@@ -364,7 +368,7 @@ export function generateInvoiceHTML(
       const rows = document.querySelectorAll('.items-table tbody tr');
       if (!card) return;
       card.classList.remove('single-page');
-      const printablePageHeight = (273 / 25.4) * 96;
+      const printablePageHeight = (271 / 25.4) * 96;
       if (card.scrollHeight <= printablePageHeight && rows.length > 0) {
         card.classList.add('single-page');
       }
