@@ -57,6 +57,29 @@ function numberToWords(paise: number): string {
   return 'INR ' + words.trim() + paiseWords + ' Only';
 }
 
+function formatInvoiceDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value.trim());
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    month < 1 || month > 12 || day < 1 ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return value;
+
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return `${day} ${months[month - 1]} ${year}`;
+}
+
 export function generateInvoiceHTML(
   settings: BusinessSettings,
   invoice: DBInvoice,
@@ -192,14 +215,14 @@ export function generateInvoiceHTML(
         <td class="doc-col">
           <div class="doc-title">${invoice.status === 'Draft' ? 'DRAFT TAX INVOICE' : 'TAX INVOICE'}</div>
           <div class="meta-line"><span class="bold">Invoice No:</span> ${invoice.invoice_number || 'DRAFT (Unissued)'}</div>
-          <div class="meta-line"><span class="bold">Invoice Date:</span> ${invoice.invoice_date || ''}</div>
+          <div class="meta-line"><span class="bold">Invoice Date:</span> ${formatInvoiceDate(invoice.invoice_date)}</div>
           <div class="meta-line"><span class="bold">Financial Year:</span> ${invoice.financial_year}</div>
           <div class="meta-line"><span class="bold">Place of Supply:</span> ${invoice.place_of_supply || (invoice.buyer_state_name + ' (' + invoice.buyer_state_code + ')')}</div>
 
           <div class="meta-line"><span class="bold">Gate Pass Number:</span> ${invoice.gate_pass_number || ''}</div>
-          <div class="meta-line"><span class="bold">Gate Pass Date:</span> ${invoice.gate_pass_date || ''}</div>
+          <div class="meta-line"><span class="bold">Gate Pass Date:</span> ${formatInvoiceDate(invoice.gate_pass_date)}</div>
           <div class="meta-line"><span class="bold">Purchase Order Number:</span> ${invoice.purchase_order_number || ''}</div>
-          <div class="meta-line"><span class="bold">Purchase Order Date:</span> ${invoice.purchase_order_date || ''}</div>
+          <div class="meta-line"><span class="bold">Purchase Order Date:</span> ${formatInvoiceDate(invoice.purchase_order_date)}</div>
           <div class="meta-line"><span class="bold">Payment Status:</span> ${invoice.payment_status}</div>
         </td>
       </tr>
@@ -213,7 +236,7 @@ export function generateInvoiceHTML(
         <td>
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">BILL TO (BUYER DETAILS):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Cash / Retail Buyer'}</div>
-          ${invoice.buyer_trade_name ? `<div>${invoice.buyer_trade_name}</div>` : ''}
+          ${invoice.buyer_trade_name && invoice.buyer_trade_name.normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN') !== (invoice.buyer_name || '').normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN') ? `<div>${invoice.buyer_trade_name.trim()}</div>` : ''}
           <div class="buyer-address-line">${(invoice.buyer_address || 'Address not specified').split(/[,\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
           <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">State:</span> ${invoice.buyer_state_name || 'N/A'} (Code: ${invoice.buyer_state_code || 'N/A'})</div>
