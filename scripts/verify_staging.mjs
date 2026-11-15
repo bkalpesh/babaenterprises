@@ -2500,8 +2500,8 @@ await assertTest('TC-79', 'Conversion Matching', 'POSITIVE', 'Converted invoice 
       cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
       apply_round_off, round_off_paise, total_amount_paise
     ) VALUES (
-      'qt-match-test', 'Draft', 'BE/QT/28-29/0002', 2, 'BE/QT/28-29/', '2028-29',
-      '2028-08-10', '2028-09-10', 1,
+      'qt-match-test', 'Draft', 'BE/QT/24-25/0002', 2, 'BE/QT/24-25/', '2024-25',
+      '2025-03-15', '2025-04-15', 1,
       'Bharat Heavy Electricals Limited', 'BHEL Corp', 'BHEL Complex, New Delhi', 'Delhi', '07', '110001', '07AAACB1234A1Z5',
       150000, 15000, 135000,
       0, 0, 24300, 24300,
@@ -2545,13 +2545,26 @@ await assertTest('TC-79', 'Conversion Matching', 'POSITIVE', 'Converted invoice 
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` }
   });
-
-  const res = await worker.fetch(convertReq, {
+  const workerEnv = {
     DB: d1,
     JWT_SECRET: 'TestSecret',
     ADMIN_PASSCODE: 'AdminPass',
     SELLER_GSTIN: '27AGCPB8322L1ZG',
     SELLER_STATE_CODE: '27'
+  };
+
+  // Backend must reject future-dated quotations before creating an invoice.
+  db.prepare("UPDATE quotations SET quotation_date = '2028-08-10', financial_year = '2028-29' WHERE id = 'qt-match-test'").run();
+  const futureRes = await worker.fetch(convertReq, workerEnv);
+  if (futureRes.status !== 422) {
+    throw new Error(`Expected HTTP 422 for future-dated quotation conversion, got ${futureRes.status}`);
+  }
+  const futureInvoiceCount = db.prepare("SELECT count(*) AS cnt FROM invoices WHERE reference_quotation_id = 'qt-match-test'").get().cnt;
+  if (futureInvoiceCount !== 0) throw new Error('Future-dated quotation conversion created an invoice');
+  db.prepare("UPDATE quotations SET quotation_date = '2025-03-15', financial_year = '2024-25' WHERE id = 'qt-match-test'").run();
+
+  const res = await worker.fetch(convertReq, {
+    ...workerEnv
   });
 
   if (res.status !== 200 && res.status !== 201) {
@@ -2567,11 +2580,14 @@ await assertTest('TC-79', 'Conversion Matching', 'POSITIVE', 'Converted invoice 
   const quote = db.prepare("SELECT * FROM quotations WHERE id = 'qt-match-test'").get();
 
   // 1. Verify Financial Year & Prefix preservation
-  if (createdInv.financial_year !== '2028-29') {
-    throw new Error(`Expected invoice FY to be 2028-29 from quotation, got ${createdInv.financial_year}`);
+  if (createdInv.financial_year !== '2024-25') {
+    throw new Error(`Expected invoice FY to be 2024-25 from backdated quotation, got ${createdInv.financial_year}`);
   }
-  if (createdInv.invoice_prefix !== 'BE/28-29/') {
-    throw new Error(`Expected invoice prefix to be BE/28-29/, got ${createdInv.invoice_prefix}`);
+  if (createdInv.invoice_date !== '2025-03-15') {
+    throw new Error(`Expected invoice date to inherit the backdated quotation date, got ${createdInv.invoice_date}`);
+  }
+  if (createdInv.invoice_prefix !== 'BE/24-25/') {
+    throw new Error(`Expected invoice prefix to be BE/24-25/, got ${createdInv.invoice_prefix}`);
   }
 
   // 2. Verify 1:1 Parity of header amounts
@@ -2631,18 +2647,18 @@ await assertTest('TC-80', 'Conversion Idempotency & FY Issuance', 'POSITIVE', 'I
   // Allocate sequence in DB for FY 2028-29 on this invoice
   db.exec(`
     INSERT INTO invoice_sequence_log (financial_year, sequence_number, invoice_id, allocated_by)
-    VALUES ('2028-29', 1, '${invoiceId}', 'ADMIN_STAGING');
+    VALUES ('2024-25', 1, '${invoiceId}', 'ADMIN_STAGING');
   `);
 
   const issuedInv = db.prepare(`SELECT * FROM invoices WHERE id = '${invoiceId}'`).get();
   if (issuedInv.status !== 'Issued') {
     throw new Error(`Expected status 'Issued', got ${issuedInv.status}`);
   }
-  if (issuedInv.financial_year !== '2028-29') {
-    throw new Error(`Expected financial_year 2028-29, got ${issuedInv.financial_year}`);
+  if (issuedInv.financial_year !== '2024-25') {
+    throw new Error(`Expected financial_year 2024-25, got ${issuedInv.financial_year}`);
   }
-  if (issuedInv.invoice_number !== 'BE/28-29/0001') {
-    throw new Error(`Expected invoice_number BE/28-29/0001, got ${issuedInv.invoice_number}`);
+  if (issuedInv.invoice_number !== 'BE/24-25/0001') {
+    throw new Error(`Expected invoice_number BE/24-25/0001, got ${issuedInv.invoice_number}`);
   }
   if (issuedInv.sequence_number !== 1) {
     throw new Error(`Expected sequence_number 1, got ${issuedInv.sequence_number}`);
@@ -3318,7 +3334,12 @@ await assertTest('TC-96', 'Invoice Customer ID', 'POSITIVE', 'POST /api/invoices
       buyer_state_name: 'Gujarat',
       buyer_state_code: '24',
       buyer_gstin: '24AAACL0140P1ZP',
-      invoice_date: '2026-11-20',
+      invoice_date: new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date()),
       items: [
         {
           itemDescription: 'High-Temp Silicone Gaskets 300mm',
@@ -3835,7 +3856,7 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
       cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0, total_amount_paise: 11800
     }]
   );
-  for (const value of ['AR/103', 'GP/103', '2026-03-14', 'PO/103', '2026-03-10']) {
+  for (const value of ['AR/103', 'GP/103', '2025-03-14', 'PO/103', '2025-03-10']) {
     if (!html.includes(value)) throw new Error(`Invoice HTML missing ${value}`);
   }
   if (html.includes('Reverse Charge')) throw new Error('Reverse Charge still appears in invoice HTML');
