@@ -167,6 +167,7 @@ export const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomerId(customerId);
+    if (!customerId) { setArNumber(''); return; }
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
       setArNumber(cust.ar_number || cust.arNumber || '');
