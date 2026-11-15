@@ -195,7 +195,7 @@ export function generateInvoiceHTML(
           <div class="meta-line"><span class="bold">Invoice Date:</span> ${invoice.invoice_date || ''}</div>
           <div class="meta-line"><span class="bold">Financial Year:</span> ${invoice.financial_year}</div>
           <div class="meta-line"><span class="bold">Place of Supply:</span> ${invoice.place_of_supply || (invoice.buyer_state_name + ' (' + invoice.buyer_state_code + ')')}</div>
-          <div class="meta-line"><span class="bold">AR Number:</span> ${invoice.ar_number || ''}</div>
+
           <div class="meta-line"><span class="bold">Gate Pass Number:</span> ${invoice.gate_pass_number || ''}</div>
           <div class="meta-line"><span class="bold">Gate Pass Date:</span> ${invoice.gate_pass_date || ''}</div>
           <div class="meta-line"><span class="bold">Purchase Order Number:</span> ${invoice.purchase_order_number || ''}</div>
@@ -218,6 +218,7 @@ export function generateInvoiceHTML(
           <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">State:</span> ${invoice.buyer_state_name || 'N/A'} (Code: ${invoice.buyer_state_code || 'N/A'})</div>
           <div><span class="bold">GSTIN:</span> ${invoice.buyer_gstin || 'URP (Unregistered)'}</div>
+          <div><span class="bold">AR Number:</span> ${invoice.ar_number || ''}</div>
         </td>
         <td>
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">SHIP TO (DISPATCH DESTINATION):</div>
