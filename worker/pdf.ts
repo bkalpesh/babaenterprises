@@ -59,7 +59,7 @@ function numberToWords(paise: number): string {
 
 function formatInvoiceDate(value: string | null | undefined): string {
   if (!value) return '';
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value.trim());
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return value;
 
   const year = Number(match[1]);
@@ -236,7 +236,7 @@ export function generateInvoiceHTML(
         <td>
           <div class="bold" style="color: #102F59; margin-bottom: 4px;">BILL TO (BUYER DETAILS):</div>
           <div class="bold" style="font-size: 11.5px;">${invoice.buyer_name || 'Cash / Retail Buyer'}</div>
-          ${invoice.buyer_trade_name && invoice.buyer_trade_name.normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN') !== (invoice.buyer_name || '').normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN') ? `<div>${invoice.buyer_trade_name.trim()}</div>` : ''}
+          ${invoice.buyer_trade_name && invoice.buyer_trade_name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN') !== (invoice.buyer_name || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN') ? `<div>${invoice.buyer_trade_name.trim()}</div>` : ''}
           <div class="buyer-address-line">${(invoice.buyer_address || 'Address not specified').split(/[,\n]+/).map(part => part.trim()).filter(Boolean).join('<br>')}</div>
           <div class="buyer-address-line">${[invoice.buyer_city, invoice.buyer_state_name, invoice.buyer_pincode].filter(Boolean).join(', ')}</div>
           <div><span class="bold">State:</span> ${invoice.buyer_state_name || 'N/A'} (Code: ${invoice.buyer_state_code || 'N/A'})</div>
