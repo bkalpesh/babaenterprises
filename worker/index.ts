@@ -2303,6 +2303,12 @@ export const worker = {
                 invoiceId,
                 targetFY,
                 invoicePrefix,
+                invoiceDate,
+                arNumber,
+                gatePassNumber,
+                gatePassDate,
+                purchaseOrderNumber,
+                purchaseOrderDate,
                 env.SELLER_GSTIN,
                 env.SELLER_STATE_CODE,
                 invoiceBuyerName,
@@ -2420,9 +2426,23 @@ export const worker = {
 
           const totals = computeTotals(computedItems, b.apply_round_off !== 0);
           const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
-          const targetFY = b.financial_year || getFinancialYear(b.invoice_date);
+          const invoiceDate = b.invoice_date || indiaDateString();
+          if (!isValidInvoiceDate(invoiceDate)) return errorResponse('Invoice Date must be a valid calendar date in YYYY-MM-DD format.', 422);
+          if (invoiceDate > indiaDateString()) return errorResponse('Future-dated invoices are not permitted. Select today or an earlier date.', 422);
+          const targetFY = getFinancialYear(invoiceDate);
           const invoicePrefix = getInvoicePrefix(targetFY);
           const customerId = b.customer_id || null;
+          const customerArRow = customerId
+            ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
+            : null;
+          if (customerId && !customerArRow) return errorResponse('Selected customer was not found in Customer Master.', 422);
+          const arNumber = customerArRow?.ar_number || null;
+          const gatePassNumber = String(b.gate_pass_number || '').trim() || null;
+          const gatePassDate = b.gate_pass_date || null;
+          const purchaseOrderNumber = String(b.purchase_order_number || '').trim() || null;
+          const purchaseOrderDate = b.purchase_order_date || null;
+          if (gatePassDate && !isValidInvoiceDate(gatePassDate)) return errorResponse('Gate Pass Date must be a valid calendar date.', 422);
+          if (purchaseOrderDate && !isValidInvoiceDate(purchaseOrderDate)) return errorResponse('Purchase Order Date must be a valid calendar date.', 422);
           const buyerStateName = b.buyer_state_name || null;
           const placeOfSupply = b.place_of_supply || (buyerStateName && buyerStateCode ? `${buyerStateName} (${buyerStateCode})` : (buyerStateName || null));
 
@@ -2430,14 +2450,15 @@ export const worker = {
             await env.DB.batch([
               env.DB.prepare(`
                 INSERT INTO invoices (
-                  id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-                  buyer_name, buyer_trade_name, buyer_address, buyer_city,
+                  id, status, financial_year, invoice_prefix, invoice_date, ar_number,
+                  gate_pass_number, gate_pass_date, purchase_order_number, purchase_order_date,
+                  seller_gstin, seller_state_code, buyer_name, buyer_trade_name, buyer_address, buyer_city,
                   buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
                   is_interstate, place_of_supply, customer_id,
                   subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   apply_round_off, round_off_paise, total_invoice_amount_paise
-                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 invoiceId,
                 targetFY,
@@ -2506,18 +2527,25 @@ export const worker = {
               await env.DB.batch([
                 env.DB.prepare(`
                   INSERT INTO invoices (
-                    id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
-                    buyer_name, buyer_trade_name, buyer_address, buyer_city,
+                    id, status, financial_year, invoice_prefix, invoice_date, ar_number,
+                    gate_pass_number, gate_pass_date, purchase_order_number, purchase_order_date,
+                    seller_gstin, seller_state_code, buyer_name, buyer_trade_name, buyer_address, buyer_city,
                     buyer_state_name, buyer_state_code, buyer_pincode, buyer_gstin,
                     is_interstate, place_of_supply,
                     subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                     cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                     apply_round_off, round_off_paise, total_invoice_amount_paise
-                  ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
                   invoiceId,
                   targetFY,
                   invoicePrefix,
+                  invoiceDate,
+                  arNumber,
+                  gatePassNumber,
+                  gatePassDate,
+                  purchaseOrderNumber,
+                  purchaseOrderDate,
                   env.SELLER_GSTIN,
                   env.SELLER_STATE_CODE,
                   b.buyer_name || null,
