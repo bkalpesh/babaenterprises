@@ -1192,7 +1192,9 @@ export const worker = {
           JSON.stringify({ r2_key: objectKey, generated_at: generatedAt, byte_length: pdfBytes.length })
         ).run();
 
-        return new Response(pdfBytes, {
+        const responseBuffer = new ArrayBuffer(pdfBytes.byteLength);
+        new Uint8Array(responseBuffer).set(pdfBytes);
+        return new Response(responseBuffer, {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `inline; filename="${filename}"`,
@@ -2324,10 +2326,10 @@ export const worker = {
                 invoicePrefix,
                 invoiceDate,
                 invoiceArNumber,
-                gatePassNumber,
-                gatePassDate,
-                purchaseOrderNumber,
-                purchaseOrderDate,
+                null,
+                null,
+                null,
+                null,
                 env.SELLER_GSTIN,
                 env.SELLER_STATE_CODE,
                 invoiceBuyerName,
