@@ -2296,19 +2296,21 @@ export const worker = {
             await env.DB.batch([
               env.DB.prepare(`
                 INSERT INTO invoices (
-                  id, status, financial_year, invoice_prefix, seller_gstin, seller_state_code,
+                  id, status, financial_year, invoice_prefix, invoice_date, ar_number,
+                  gate_pass_number, gate_pass_date, purchase_order_number, purchase_order_date,
+                  seller_gstin, seller_state_code,
                   buyer_name, buyer_trade_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
                   buyer_gstin, is_interstate, place_of_supply, reference_quotation_id,
                   subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   apply_round_off, round_off_paise, total_invoice_amount_paise
-                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 invoiceId,
                 targetFY,
                 invoicePrefix,
                 invoiceDate,
-                arNumber,
+                quote.ar_number || null,
                 gatePassNumber,
                 gatePassDate,
                 purchaseOrderNumber,
