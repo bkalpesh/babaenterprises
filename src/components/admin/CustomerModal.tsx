@@ -31,6 +31,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
   const [contactPerson, setContactPerson] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
+  const [arNumber, setArNumber] = useState('');
   const [notes, setNotes] = useState('');
 
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
       setContactPerson(customerToEdit.contact_person || '');
       setMobile(customerToEdit.mobile || '');
       setEmail(customerToEdit.email || '');
+      setArNumber(customerToEdit.ar_number || customerToEdit.arNumber || '');
       setNotes(customerToEdit.notes || '');
     } else {
       setLegalName('');
@@ -66,6 +68,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
       setContactPerson('');
       setMobile('');
       setEmail('');
+      setArNumber('');
       setNotes('');
     }
     setError(null);
@@ -135,6 +138,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
         contact_person: contactPerson.trim() || undefined,
         mobile: mobile.trim() || undefined,
         email: email.trim() || undefined,
+        ar_number: arNumber.trim() || undefined,
         notes: notes.trim() || undefined,
       };
 
@@ -374,8 +378,8 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
             </div>
           </div>
 
-          {/* Contact Person, Mobile, Email */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Contact Person, Mobile, Email and Customer AR Number */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Contact Person</label>
               <input
@@ -403,6 +407,16 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="procurement@company.com"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">AR Number</label>
+              <input
+                type="text"
+                value={arNumber}
+                onChange={(e) => setArNumber(e.target.value)}
+                placeholder="Customer AR number"
                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0755A5]/20 focus:border-[#0755A5]"
               />
             </div>
