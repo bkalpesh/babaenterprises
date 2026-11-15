@@ -709,18 +709,19 @@ export const worker = {
         const tradeName = b.trade_name?.trim() || b.tradeName?.trim() || null;
         const country = b.country?.trim() || 'India';
         const email = b.email?.trim() || null;
+        const arNumber = b.ar_number?.trim() || b.arNumber?.trim() || null;
         const notes = b.notes?.trim() || null;
 
         await env.DB.prepare(`
           INSERT INTO customers (
             id, legal_name, trade_name, gstin, gst_registration_type,
             billing_address, city, state, state_code, pincode, country,
-            contact_person, mobile, email, notes, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            contact_person, mobile, email, ar_number, notes, is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `).bind(
           custId, legalName, tradeName, gstinRaw, regType,
           billingAddress, city, state, stateCode, pincode, country,
-          contactPerson, mobile, email, notes
+          contactPerson, mobile, email, arNumber, notes
         ).run();
 
         const created = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
@@ -745,6 +746,9 @@ export const worker = {
         const tradeName = b.trade_name !== undefined ? (b.trade_name?.trim() || null) : (b.tradeName !== undefined ? (b.tradeName?.trim() || null) : existing.trade_name);
         const country = b.country?.trim() || existing.country || 'India';
         const email = b.email !== undefined ? (b.email?.trim() || null) : existing.email;
+        const arNumber = b.ar_number !== undefined || b.arNumber !== undefined
+          ? ((b.ar_number ?? b.arNumber)?.trim() || null)
+          : existing.ar_number;
         const notes = b.notes !== undefined ? (b.notes?.trim() || null) : existing.notes;
         const regType = b.gst_registration_type || b.gstRegistrationType || existing.gst_registration_type;
 
@@ -767,12 +771,12 @@ export const worker = {
           UPDATE customers SET
             legal_name = ?, trade_name = ?, gstin = ?, gst_registration_type = ?,
             billing_address = ?, city = ?, state = ?, state_code = ?, pincode = ?, country = ?,
-            contact_person = ?, mobile = ?, email = ?, notes = ?, updated_at = datetime('now')
+            contact_person = ?, mobile = ?, email = ?, ar_number = ?, notes = ?, updated_at = datetime('now')
           WHERE id = ?
         `).bind(
           legalName, tradeName, gstinRaw, regType,
           billingAddress, city, state, stateCode, pincode, country,
-          contactPerson, mobile, email, notes, custId
+          contactPerson, mobile, email, arNumber, notes, custId
         ).run();
 
         const updated = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(custId).first<DBCustomer>();
