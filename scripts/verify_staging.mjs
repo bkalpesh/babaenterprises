@@ -3766,15 +3766,15 @@ assertTest('TC-103', 'Customer AR', 'POSITIVE', 'Migration 0008 adds customer, q
 assertTest('TC-104', 'Backdated Invoice', 'POSITIVE', 'Backdated FY 2025-26 invoice issues with its own prefix, actual issued_at and audit event', () => {
   seedDraftInvoice('inv-backdated-104', '27AAACB2026R1Z9', 0, '27', '2025-26');
   db.prepare(`
-    UPDATE invoices SET invoice_date = '2025-03-15', ar_number = 'AR/103',
-      gate_pass_number = 'GP/103', gate_pass_date = '2025-03-14',
-      purchase_order_number = 'PO/103', purchase_order_date = '2025-03-10'
+    UPDATE invoices SET invoice_date = '2026-03-15', ar_number = 'AR/103',
+      gate_pass_number = 'GP/103', gate_pass_date = '2026-03-14',
+      purchase_order_number = 'PO/103', purchase_order_date = '2026-03-10'
     WHERE id = 'inv-backdated-104'
   `).run();
   db.prepare("INSERT INTO invoice_sequence_log (financial_year, sequence_number, invoice_id, allocated_by) VALUES ('2025-26', 1, 'inv-backdated-104', 'TEST_ADMIN')").run();
   const invoice = db.prepare("SELECT * FROM invoices WHERE id = 'inv-backdated-104'").get();
   if (invoice.invoice_number !== 'BE/25-26/0001') throw new Error(`Unexpected backdated invoice number: ${invoice.invoice_number}`);
-  if (invoice.invoice_date !== '2025-03-15') throw new Error('Selected backdated invoice date was not preserved');
+  if (invoice.invoice_date !== '2026-03-15') throw new Error('Selected backdated invoice date was not preserved');
   if (!invoice.issued_at) throw new Error('Actual server issuance timestamp was not populated');
   if (invoice.ar_number !== 'AR/103' || invoice.gate_pass_number !== 'GP/103' || invoice.purchase_order_number !== 'PO/103') {
     throw new Error('AR / Gate Pass / Purchase Order values were not preserved');
@@ -3835,7 +3835,7 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
       cgst_amount_paise: 900, sgst_amount_paise: 900, igst_amount_paise: 0, total_amount_paise: 11800
     }]
   );
-  for (const value of ['AR/103', 'GP/103', '2025-03-14', 'PO/103', '2025-03-10']) {
+  for (const value of ['AR/103', 'GP/103', '2026-03-14', 'PO/103', '2026-03-10']) {
     if (!html.includes(value)) throw new Error(`Invoice HTML missing ${value}`);
   }
   if (html.includes('Reverse Charge')) throw new Error('Reverse Charge still appears in invoice HTML');
