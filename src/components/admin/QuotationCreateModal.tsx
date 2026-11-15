@@ -181,6 +181,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
   // When a customer is selected from dropdown, autofill details
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomerId(customerId);
+    if (!customerId) { setArNumber(''); return; }
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
       setArNumber(cust.ar_number || cust.arNumber || '');
