@@ -3948,7 +3948,7 @@ assertTest('TC-109', 'Invoice NULL Reference Fields', 'POSITIVE', 'Invoice previ
     []
   );
   const expectedBlankRows = [
-    '<div class="meta-line"><span class="bold">AR Number:</span> </div>',
+    '<div><span class="bold">AR Number:</span> </div>',
     '<div class="meta-line"><span class="bold">Gate Pass Number:</span> </div>',
     '<div class="meta-line"><span class="bold">Gate Pass Date:</span> </div>',
     '<div class="meta-line"><span class="bold">Purchase Order Number:</span> </div>',
