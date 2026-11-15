@@ -47,6 +47,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [arNumber, setArNumber] = useState('');
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   // Buyer Form Details (autofilled from customer, can be edited for transaction override)
@@ -90,6 +91,8 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
 
     if (initialData) {
       setSelectedCustomerId(initialData.customer_id || '');
+      const linkedCustomer = customerMaster.find((c) => c.id === initialData.customer_id);
+      setArNumber(linkedCustomer?.ar_number || linkedCustomer?.arNumber || initialData.ar_number || '');
       const isLegacyBuyerRecord = Number(initialData.buyer_fields_version || 1) < 2;
       setBuyerName(isLegacyBuyerRecord ? (initialData.buyer_company || initialData.buyer_name || '') : (initialData.buyer_name || ''));
       setBuyerCompany(isLegacyBuyerRecord ? '' : (initialData.buyer_company || ''));
@@ -144,6 +147,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     } else {
       // Reset form to blank state for creation
       setSelectedCustomerId('');
+      setArNumber('');
       setBuyerName('');
       setBuyerCompany('');
       setBuyerContactPerson('');
@@ -179,6 +183,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
     setSelectedCustomerId(customerId);
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
+      setArNumber(cust.ar_number || cust.arNumber || '');
       setBuyerName(cust.legalName || cust.legal_name || '');
       setBuyerCompany(cust.tradeName || cust.trade_name || '');
       setBuyerContactPerson(cust.contactPerson || cust.contact_person || '');
@@ -458,6 +463,11 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
             </div>
 
             {/* Buyer Details: field names and semantics aligned with InvoiceCreateModal */}
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Customer AR Number</div>
+              <div className="mt-0.5 text-sm font-semibold text-slate-800">{arNumber || 'Not assigned in Customer Master'}</div>
+              <p className="mt-0.5 text-[10px] text-slate-500">Managed in Customer Master; automatically copied to this quotation.</p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Buyer Legal Name <span className="text-red-500">*</span></label>
@@ -784,8 +794,19 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
           isOpen={isCustomerModalOpen}
           onClose={() => setIsCustomerModalOpen(false)}
           onSuccess={(newCust) => {
-            loadInitialState();
-            handleCustomerSelect(newCust.id);
+            setCustomers((prev) => [...prev.filter((c) => c.id !== newCust.id), newCust]);
+            setSelectedCustomerId(newCust.id);
+            setArNumber(newCust.ar_number || newCust.arNumber || '');
+            setBuyerName(newCust.legalName || newCust.legal_name || '');
+            setBuyerCompany(newCust.tradeName || newCust.trade_name || '');
+            setBuyerContactPerson(newCust.contactPerson || newCust.contact_person || '');
+            setBuyerPhone(newCust.mobile || '');
+            setBuyerEmail(newCust.email || '');
+            setBuyerGstin(newCust.gstin || '');
+            setBuyerAddress(newCust.billingAddress || newCust.billing_address || '');
+            setBuyerCity(newCust.city || '');
+            setBuyerStateCode(newCust.stateCode || newCust.state_code || '27');
+            setBuyerPincode(newCust.pincode || '');
             setIsCustomerModalOpen(false);
           }}
         />
