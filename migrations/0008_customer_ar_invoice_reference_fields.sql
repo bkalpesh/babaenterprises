@@ -15,6 +15,16 @@ ALTER TABLE invoices ADD COLUMN purchase_order_number TEXT DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN purchase_order_date TEXT DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN issued_at TEXT DEFAULT NULL;
 
+-- Populate snapshots only for editable Draft documents. Sent/Accepted quotations and
+-- Issued/Cancelled invoices remain historically unchanged.
+UPDATE quotations
+SET ar_number = (SELECT ar_number FROM customers WHERE customers.id = quotations.customer_id)
+WHERE status = 'Draft' AND ar_number IS NULL AND customer_id IS NOT NULL;
+
+UPDATE invoices
+SET ar_number = (SELECT ar_number FROM customers WHERE customers.id = invoices.customer_id)
+WHERE status = 'Draft' AND ar_number IS NULL AND customer_id IS NOT NULL;
+
 -- Preserve the highest already-issued sequence in every historical financial year.
 -- Existing current-year baselines (for example FY 2026-27 = 161) are never reduced.
 INSERT INTO invoice_sequence_baselines (financial_year, last_sequence_number, updated_at)
