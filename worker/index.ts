@@ -2760,9 +2760,14 @@ export const worker = {
         let nextSequence: number;
         try {
           const maxSeqRow = await env.DB.prepare(
-            'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoice_sequence_log WHERE financial_year = ?'
+            `SELECT max(
+               coalesce((SELECT last_sequence_number FROM invoice_sequence_baselines WHERE financial_year = ?), 0),
+               coalesce(max(sequence_number), 0)
+             ) as maxSeq
+             FROM invoice_sequence_log
+             WHERE financial_year = ?`
           )
-            .bind(fy)
+            .bind(fy, fy)
             .first<{ maxSeq: number }>();
           nextSequence = (maxSeqRow?.maxSeq || 0) + 1;
 
