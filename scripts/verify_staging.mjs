@@ -26,6 +26,7 @@ import {
   checkAdminAuth,
   createSignedToken,
   verifySignedToken,
+  friendlyConstraintError,
 } from '../worker/index.ts';
 import { ApiService } from '../src/services/apiService.ts';
 
@@ -43,6 +44,9 @@ console.log('===================================================================
 const schemaSql = readFileSync(resolve(__dirname, '../migrations/0001_initial_schema.sql'), 'utf-8');
 const seedSql = readFileSync(resolve(__dirname, '../migrations/0002_seed_data.sql'), 'utf-8');
 const customerSql = readFileSync(resolve(__dirname, '../migrations/0003_customer_master.sql'), 'utf-8');
+const pdfStorageSql = readFileSync(resolve(__dirname, '../migrations/0004_quotation_pdf_storage.sql'), 'utf-8');
+const buyerAlignSql = readFileSync(resolve(__dirname, '../migrations/0005_quotation_buyer_alignment.sql'), 'utf-8');
+const baselineSql = readFileSync(resolve(__dirname, '../migrations/0006_invoice_sequence_baselines.sql'), 'utf-8');
 
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
@@ -68,9 +72,36 @@ try {
 // Apply Migration 0003 Customer Master
 try {
   db.exec(customerSql);
-  console.log('✓ Migration 0003_customer_master.sql applied (customers table, sequence tables, customer_id columns)\n');
+  console.log('✓ Migration 0003_customer_master.sql applied (customers table, sequence tables, customer_id columns)');
 } catch (err) {
   console.error('✗ Migration 0003 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0004 Quotation PDF Storage
+try {
+  db.exec(pdfStorageSql);
+  console.log('✓ Migration 0004_quotation_pdf_storage.sql applied');
+} catch (err) {
+  console.error('✗ Migration 0004 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0005 Quotation Buyer Alignment
+try {
+  db.exec(buyerAlignSql);
+  console.log('✓ Migration 0005_quotation_buyer_alignment.sql applied');
+} catch (err) {
+  console.error('✗ Migration 0005 failed to load:', err);
+  process.exit(1);
+}
+
+// Apply Migration 0006 Invoice Sequence Baselines
+try {
+  db.exec(baselineSql);
+  console.log('✓ Migration 0006_invoice_sequence_baselines.sql applied (invoice_sequence_baselines table & trigger)\n');
+} catch (err) {
+  console.error('✗ Migration 0006 failed to load:', err);
   process.exit(1);
 }
 
@@ -3351,6 +3382,247 @@ await assertTest('TC-97', 'Toggle Active', 'POSITIVE', 'PATCH /api/customers/:id
   const body2 = await res2.json();
   if (body2.customer?.is_active !== 1) {
     throw new Error(`Expected is_active to return to 1, got ${body2.customer?.is_active}`);
+  }
+});
+
+await assertTest('TC-98', 'Invoice Baseline Issuance', 'POSITIVE', 'POST /api/invoices/:id/issue records sequence in invoice_sequence_log and honors FY 2026-27 baseline 161', async () => {
+  const isoDb = new DatabaseSync(':memory:');
+  isoDb.exec('PRAGMA foreign_keys = ON;');
+  for (const sql of [schemaSql, seedSql, customerSql, pdfStorageSql, buyerAlignSql, baselineSql]) {
+    isoDb.exec(sql);
+  }
+  const d1 = createD1Adapter(isoDb);
+  const token = await createSignedToken('TestSecret');
+  const env = {
+    DB: d1,
+    JWT_SECRET: 'TestSecret',
+    ADMIN_PASSCODE: 'AdminPass',
+    SELLER_GSTIN: '27AGCPB8322L1ZG',
+    SELLER_STATE_CODE: '27',
+  };
+
+  // Seed two valid Draft invoices for FY 2026-27
+  for (const id of ['inv-base-1', 'inv-base-2']) {
+    isoDb.exec(`
+      INSERT INTO invoices (
+        id, status, financial_year, invoice_prefix, invoice_date,
+        buyer_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
+        is_interstate, place_of_supply,
+        subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+        cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+        apply_round_off, round_off_paise, total_invoice_amount_paise
+      ) VALUES (
+        '${id}', 'Draft', '2026-27', 'BE/26-27/', '2026-11-15',
+        'Precision Components Pvt Ltd', 'Plot 12, MIDC Bhosari', 'Pune', 'Maharashtra', '27', '411026',
+        0, 'Maharashtra (27)',
+        10000, 0, 10000, 900, 900, 0, 1800, 0, 0, 11800
+      );
+      INSERT INTO invoice_items (
+        id, invoice_id, line_number, item_description, hsn_code,
+        quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+        discount_bps, discount_amount_paise, taxable_amount_paise,
+        gst_rate_bps, cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+        cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+      ) VALUES (
+        'item-${id}', '${id}', 1, 'Industrial Rubber Seal', '40169990',
+        1000000, 'NOS', 10000, 10000, 0, 0, 10000,
+        1800, 900, 900, 0, 900, 900, 0, 11800
+      );
+    `);
+  }
+
+  // 1. Issue with empty baseline table -> allocates 1 (BE/26-27/0001) via invoice_sequence_log
+  const res1 = await worker.fetch(
+    new Request('https://staging.babaenterprises.internal/api/invoices/inv-base-1/issue', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    env
+  );
+  const body1 = await res1.json();
+  if (res1.status !== 200 || !body1.success || body1.invoice?.invoice_number !== 'BE/26-27/0001') {
+    throw new Error(`Expected BE/26-27/0001, got HTTP ${res1.status}: ${JSON.stringify(body1)}`);
+  }
+  const seq1 = isoDb.prepare("SELECT * FROM invoice_sequence_log WHERE invoice_id = 'inv-base-1'").get();
+  if (!seq1 || seq1.sequence_number !== 1) {
+    throw new Error(`Expected sequence log entry 1 for inv-base-1, got ${JSON.stringify(seq1)}`);
+  }
+
+  // 2. Configure FY 2026-27 baseline to 161 (as staging reset does) -> next invoice must be 162 (BE/26-27/0162)
+  isoDb.exec(`
+    INSERT INTO invoice_sequence_baselines (financial_year, last_sequence_number)
+    VALUES ('2026-27', 161)
+    ON CONFLICT(financial_year) DO UPDATE SET last_sequence_number = 161;
+  `);
+
+  const res2 = await worker.fetch(
+    new Request('https://staging.babaenterprises.internal/api/invoices/inv-base-2/issue', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    env
+  );
+  const body2 = await res2.json();
+  if (res2.status !== 200 || !body2.success || body2.invoice?.invoice_number !== 'BE/26-27/0162') {
+    throw new Error(`Expected BE/26-27/0162 after baseline 161, got HTTP ${res2.status}: ${JSON.stringify(body2)}`);
+  }
+  const seq2 = isoDb.prepare("SELECT * FROM invoice_sequence_log WHERE invoice_id = 'inv-base-2'").get();
+  if (!seq2 || seq2.sequence_number !== 162) {
+    throw new Error(`Expected sequence log entry 162 for inv-base-2, got ${JSON.stringify(seq2)}`);
+  }
+});
+
+await assertTest('TC-99', 'Missing Baseline Fail-Closed', 'NEGATIVE', 'POST /api/invoices/:id/issue returns migration-required error when invoice_sequence_baselines is absent and never bypasses sequence log', async () => {
+  const isoDb = new DatabaseSync(':memory:');
+  isoDb.exec('PRAGMA foreign_keys = ON;');
+  for (const sql of [schemaSql, seedSql, customerSql, pdfStorageSql, buyerAlignSql]) {
+    isoDb.exec(sql);
+  }
+  const d1 = createD1Adapter(isoDb);
+  const token = await createSignedToken('TestSecret');
+
+  isoDb.exec(`
+    INSERT INTO invoices (
+      id, status, financial_year, invoice_prefix, invoice_date,
+      buyer_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
+      is_interstate, place_of_supply,
+      subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      apply_round_off, round_off_paise, total_invoice_amount_paise
+    ) VALUES (
+      'inv-no-baseline', 'Draft', '2026-27', 'BE/26-27/', '2026-11-15',
+      'Precision Components Pvt Ltd', 'Plot 12, MIDC Bhosari', 'Pune', 'Maharashtra', '27', '411026',
+      0, 'Maharashtra (27)',
+      10000, 0, 10000, 900, 900, 0, 1800, 0, 0, 11800
+    );
+    INSERT INTO invoice_items (
+      id, invoice_id, line_number, item_description, hsn_code,
+      quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+      discount_bps, discount_amount_paise, taxable_amount_paise,
+      gst_rate_bps, cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+    ) VALUES (
+      'item-no-baseline', 'inv-no-baseline', 1, 'Industrial Rubber Seal', '40169990',
+      1000000, 'NOS', 10000, 10000, 0, 0, 10000,
+      1800, 900, 900, 0, 900, 900, 0, 11800
+    );
+  `);
+
+  const res = await worker.fetch(
+    new Request('https://staging.babaenterprises.internal/api/invoices/inv-no-baseline/issue', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    {
+      DB: d1,
+      JWT_SECRET: 'TestSecret',
+      ADMIN_PASSCODE: 'AdminPass',
+      SELLER_GSTIN: '27AGCPB8322L1ZG',
+      SELLER_STATE_CODE: '27',
+    }
+  );
+  const body = await res.json();
+  if (res.status !== 503 || body.success !== false || !String(body.error).includes('0006_invoice_sequence_baselines.sql')) {
+    throw new Error(`Expected HTTP 503 migration-required error, got HTTP ${res.status}: ${JSON.stringify(body)}`);
+  }
+  const invAfter = isoDb.prepare("SELECT status, invoice_number, sequence_number FROM invoices WHERE id = 'inv-no-baseline'").get();
+  if (invAfter.status !== 'Draft' || invAfter.invoice_number !== null || invAfter.sequence_number !== null) {
+    throw new Error(`Draft invoice must remain unissued when baseline table is missing: ${JSON.stringify(invAfter)}`);
+  }
+  const seqCount = isoDb.prepare("SELECT count(*) as c FROM invoice_sequence_log WHERE invoice_id = 'inv-no-baseline'").get().c;
+  if (seqCount !== 0) {
+    throw new Error(`Sequence log should have 0 rows for failed issuance, found ${seqCount}`);
+  }
+});
+
+await assertTest('TC-100', 'Missing Sequence Log Fail-Closed', 'NEGATIVE', 'POST /api/invoices/:id/issue returns migration-required error when invoice_sequence_log is absent', async () => {
+  const isoDb = new DatabaseSync(':memory:');
+  isoDb.exec('PRAGMA foreign_keys = ON;');
+  for (const sql of [schemaSql, seedSql, customerSql, pdfStorageSql, buyerAlignSql, baselineSql]) {
+    isoDb.exec(sql);
+  }
+  // Drop triggers & invoice_sequence_log to simulate missing sequence table
+  isoDb.exec(`
+    DROP TRIGGER IF EXISTS trg_prevent_invoice_sequence_log_deletion;
+    DROP TRIGGER IF EXISTS trg_prevent_invoice_sequence_log_update;
+    DROP TRIGGER IF EXISTS trg_enforce_invoice_sequence_contiguity;
+    DROP TRIGGER IF EXISTS trg_execute_invoice_issuance_on_sequence_reservation;
+    DROP TABLE invoice_sequence_log;
+    INSERT INTO invoices (
+      id, status, financial_year, invoice_prefix, invoice_date,
+      buyer_name, buyer_address, buyer_city, buyer_state_name, buyer_state_code, buyer_pincode,
+      is_interstate, place_of_supply,
+      subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
+      apply_round_off, round_off_paise, total_invoice_amount_paise
+    ) VALUES (
+      'inv-no-seqlog', 'Draft', '2026-27', 'BE/26-27/', '2026-11-15',
+      'Precision Components Pvt Ltd', 'Plot 12, MIDC Bhosari', 'Pune', 'Maharashtra', '27', '411026',
+      0, 'Maharashtra (27)',
+      10000, 0, 10000, 900, 900, 0, 1800, 0, 0, 11800
+    );
+    INSERT INTO invoice_items (
+      id, invoice_id, line_number, item_description, hsn_code,
+      quantity_microunits, unit_of_measure, unit_price_paise, gross_amount_paise,
+      discount_bps, discount_amount_paise, taxable_amount_paise,
+      gst_rate_bps, cgst_rate_bps, sgst_rate_bps, igst_rate_bps,
+      cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_amount_paise
+    ) VALUES (
+      'item-no-seqlog', 'inv-no-seqlog', 1, 'Industrial Rubber Seal', '40169990',
+      1000000, 'NOS', 10000, 10000, 0, 0, 10000,
+      1800, 900, 900, 0, 900, 900, 0, 11800
+    );
+  `);
+
+  const d1 = createD1Adapter(isoDb);
+  const token = await createSignedToken('TestSecret');
+  const res = await worker.fetch(
+    new Request('https://staging.babaenterprises.internal/api/invoices/inv-no-seqlog/issue', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    {
+      DB: d1,
+      JWT_SECRET: 'TestSecret',
+      ADMIN_PASSCODE: 'AdminPass',
+      SELLER_GSTIN: '27AGCPB8322L1ZG',
+      SELLER_STATE_CODE: '27',
+    }
+  );
+  const body = await res.json();
+  if (res.status !== 503 || body.success !== false || !String(body.error).includes('invoice_sequence_log')) {
+    throw new Error(`Expected HTTP 503 migration-required error for missing invoice_sequence_log, got HTTP ${res.status}: ${JSON.stringify(body)}`);
+  }
+  const invAfter = isoDb.prepare("SELECT status, invoice_number FROM invoices WHERE id = 'inv-no-seqlog'").get();
+  if (invAfter.status !== 'Draft' || invAfter.invoice_number !== null) {
+    throw new Error(`Draft invoice must remain unissued when sequence log table is missing: ${JSON.stringify(invAfter)}`);
+  }
+});
+
+assertTest('TC-101', 'Error Classification', 'NEGATIVE', 'friendlyConstraintError() never misreports missing tables, missing columns, or SQL errors as business-rule violations', () => {
+  const technicalErrors = [
+    new Error('D1_ERROR: no such table: invoice_sequence_baselines'),
+    new Error('D1_ERROR: no such column: issued_at'),
+    new Error('D1_ERROR: near "SELECT": syntax error: SQLITE_ERROR'),
+    new Error('D1_ERROR: database is locked: SQLITE_BUSY'),
+  ];
+  for (const err of technicalErrors) {
+    const mapped = friendlyConstraintError(err);
+    if (mapped !== null) {
+      throw new Error(`Technical D1 error "${err.message}" was misclassified as business rule: ${mapped}`);
+    }
+  }
+
+  const businessErrors = [
+    { err: new Error('D1_ERROR: ERR_UNCONFIRMED_GST_RATE: All line items must have confirmed GST rates'), expect: 'GST rate needs administrator confirmation' },
+    { err: new Error('D1_ERROR: ERR_SEQUENCE_GAP: Invoice sequence must be next number'), expect: 'numbering sequence needs administrator attention' },
+    { err: new Error('D1_ERROR: CHECK constraint failed: invoices: SQLITE_CONSTRAINT'), expect: 'does not meet a required business rule' },
+  ];
+  for (const item of businessErrors) {
+    const mapped = friendlyConstraintError(item.err);
+    if (!mapped || !mapped.includes(item.expect)) {
+      throw new Error(`Business error "${item.err.message}" was not translated properly: ${mapped}`);
+    }
   }
 });
 

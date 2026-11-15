@@ -175,8 +175,20 @@ function errorResponse(message: string, status: number = 400): Response {
  */
 function friendlyConstraintError(error: any): string | null {
   const raw = String(error?.message || error || '');
-  if (!/SQLITE_CONSTRAINT|D1_ERROR|ERR_[A-Z_]+/.test(raw)) return null;
-  const code = raw.match(/ERR_[A-Z_]+/)?.[0] || '';
+  // Never mask missing tables/columns, SQL syntax failures, or engine errors as business-rule violations.
+  if (
+    /no such table|no such column|syntax error|no such trigger|no such function|SQLITE_ERROR|SQLITE_BUSY|SQLITE_CORRUPT|SQLITE_FULL|SQLITE_READONLY/i.test(
+      raw
+    )
+  ) {
+    return null;
+  }
+
+  const hasTriggerCode = /\bERR_[A-Z_]+\b/.test(raw);
+  const hasConstraintError = /SQLITE_CONSTRAINT|(?:UNIQUE|CHECK|FOREIGN KEY|NOT NULL)\s+constraint failed/i.test(raw);
+  if (!hasTriggerCode && !hasConstraintError) return null;
+
+  const code = raw.match(/\bERR_[A-Z_]+\b/)?.[0] || '';
 
   if (code === 'ERR_UNCONFIRMED_GST_RATE') {
     return 'GST rate needs administrator confirmation.\n\nHow to fix:\n1. Open Admin Dashboard → Products / Catalogue.\n2. Find each product used in this quotation or invoice.\n3. Ask an administrator to verify and save the correct GST rate.\n4. Reopen the Draft document and check its line items.\n5. Save again, then retry dispatch or issuance.\n\nThe document has not been issued or dispatched.';
@@ -203,7 +215,7 @@ function friendlyConstraintError(error: any): string | null {
   if (code.includes('SEQUENCE') || code.includes('FINANCIAL_YEAR_MISMATCH')) {
     return 'The document number could not be allocated because the numbering sequence needs administrator attention.\n\nPlease do not retry repeatedly or edit the number. Contact the administrator to check the financial-year sequence. The document remains unissued.';
   }
-  if (/SQLITE_CONSTRAINT|D1_ERROR/.test(raw)) {
+  if (hasConstraintError) {
     return 'This action was blocked because the document does not meet a required business rule.\n\nHow to fix:\n1. Check that all required buyer details and item fields are complete.\n2. Verify product GST rates and HSN codes with an administrator.\n3. Confirm the document is still in Draft status before editing or issuing.\n4. Save your corrections and retry.\n\nIf it still fails, contact the administrator and share the document number and time of the error.';
   }
   return null;
@@ -2779,28 +2791,20 @@ export const worker = {
             VALUES (?, ?, ?, 'ADMIN_STAGING')
           `).bind(fy, nextSequence, invId).run();
         } catch (seqErr: any) {
-          if (
-            String(seqErr).includes('no such table: invoice_sequence_log') ||
-            String(seqErr).includes('no such table: invoice_sequence_baselines')
-          ) {
-            // Resilient fallback if the sequence log or optional baseline table is not yet applied
-            const maxSeqRow = await env.DB.prepare(
-              'SELECT coalesce(max(sequence_number), 0) as maxSeq FROM invoices WHERE financial_year = ? AND sequence_number IS NOT NULL'
-            ).bind(fy).first<{ maxSeq: number }>();
-            nextSequence = (maxSeqRow?.maxSeq || 0) + 1;
-            const fullInvNumber = `${expectedPrefix}${String(nextSequence).padStart(4, '0')}`;
-            await env.DB.prepare(`
-              UPDATE invoices SET
-                status = 'Issued',
-                sequence_number = ?,
-                invoice_number = ?,
-                issued_at = datetime('now'),
-                updated_at = datetime('now')
-              WHERE id = ?
-            `).bind(nextSequence, fullInvNumber, invId).run();
-          } else {
-            throw seqErr;
+          const errMsg = String(seqErr?.message || seqErr);
+          if (errMsg.includes('no such table: invoice_sequence_baselines')) {
+            return errorResponse(
+              'Database migration required: invoice_sequence_baselines table is missing. Apply migration 0006_invoice_sequence_baselines.sql before issuing invoices.',
+              503
+            );
           }
+          if (errMsg.includes('no such table: invoice_sequence_log')) {
+            return errorResponse(
+              'Database migration required: invoice_sequence_log table is missing. Apply required D1 schema migrations before issuing invoices.',
+              503
+            );
+          }
+          throw seqErr;
         }
 
         const issued = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first<DBInvoice>();
@@ -2881,6 +2885,7 @@ export {
   timingSafeEqual,
   jsonResponse,
   errorResponse,
+  friendlyConstraintError,
 };
 
 export default worker;
