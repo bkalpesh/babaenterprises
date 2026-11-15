@@ -28,7 +28,7 @@ INSERT INTO business_settings (
   '411039',
   '9028260011',
   '8788266934',
-  'babaenterprises09@gmail.com',
+  'babarubberplasticproducts@gmail.com',
   NULL, NULL, NULL, NULL,
   'BE/26-27/',
   'BE/QT/26-27/',
