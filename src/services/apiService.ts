@@ -27,6 +27,7 @@ export function mapDBCustomer(c: any): Customer {
   const contactPerson = c.contact_person || c.contactPerson || '';
   const mobile = c.mobile || '';
   const email = c.email || null;
+  const arNumber = c.ar_number || c.arNumber || null;
   const notes = c.notes || null;
   const isActive = c.is_active === 1 || c.is_active === true || c.isActive === true || c.is_active === undefined;
   const regType = c.gst_registration_type || c.gstRegistrationType || (gstin ? 'Regular' : 'Unregistered');
@@ -48,6 +49,8 @@ export function mapDBCustomer(c: any): Customer {
     contactPerson,
     mobile,
     email,
+    arNumber,
+    ar_number: arNumber,
     notes,
     isActive,
     legal_name: legalName,
@@ -76,6 +79,12 @@ export interface StagingInvoice {
   invoice_prefix: string;
   sequence_number: number | null;
   invoice_date: string | null;
+  issued_at?: string | null;
+  ar_number?: string | null;
+  gate_pass_number?: string | null;
+  gate_pass_date?: string | null;
+  purchase_order_number?: string | null;
+  purchase_order_date?: string | null;
   financial_year: string;
   seller_gstin: string;
   customer_id?: string | null;
@@ -123,6 +132,7 @@ export interface StagingQuotation {
   buyer_pincode?: string | null;
   buyer_phone?: string | null;
   buyer_email?: string | null;
+  ar_number?: string | null;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Expired' | 'Converted';
   converted_invoice_id: string | null;
   taxable_amount_paise: number;
