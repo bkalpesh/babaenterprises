@@ -2661,6 +2661,22 @@ export const worker = {
         const applyRoundOff = b.apply_round_off !== undefined ? (b.apply_round_off ? 1 : 0) : (b.applyRoundOff ? 1 : 1);
         const totals = computeTotals(computedItems, applyRoundOff === 1);
         const customerId = b.customer_id || b.customerId || invoice.customer_id || null;
+        const invoiceDate = b.invoice_date || invoice.invoice_date || indiaDateString();
+        if (!isValidInvoiceDate(invoiceDate)) return errorResponse('Invoice Date must be a valid calendar date in YYYY-MM-DD format.', 422);
+        if (invoiceDate > indiaDateString()) return errorResponse('Future-dated invoices are not permitted. Select today or an earlier date.', 422);
+        const targetFY = getFinancialYear(invoiceDate);
+        const invoicePrefix = getInvoicePrefix(targetFY);
+        const customerArRow = customerId
+          ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
+          : null;
+        if (customerId && !customerArRow) return errorResponse('Selected customer was not found in Customer Master.', 422);
+        const arNumber = customerArRow?.ar_number || null;
+        const gatePassNumber = b.gate_pass_number !== undefined ? (String(b.gate_pass_number || '').trim() || null) : (invoice.gate_pass_number || null);
+        const gatePassDate = b.gate_pass_date !== undefined ? (b.gate_pass_date || null) : (invoice.gate_pass_date || null);
+        const purchaseOrderNumber = b.purchase_order_number !== undefined ? (String(b.purchase_order_number || '').trim() || null) : (invoice.purchase_order_number || null);
+        const purchaseOrderDate = b.purchase_order_date !== undefined ? (b.purchase_order_date || null) : (invoice.purchase_order_date || null);
+        if (gatePassDate && !isValidInvoiceDate(gatePassDate)) return errorResponse('Gate Pass Date must be a valid calendar date.', 422);
+        if (purchaseOrderDate && !isValidInvoiceDate(purchaseOrderDate)) return errorResponse('Purchase Order Date must be a valid calendar date.', 422);
         const buyerStateName = b.buyer_state_name || invoice.buyer_state_name || null;
         const placeOfSupply = b.place_of_supply || (buyerStateName && buyerStateCode ? `${buyerStateName} (${buyerStateCode})` : (buyerStateName || null));
 
@@ -2678,6 +2694,14 @@ export const worker = {
               buyer_pincode = ?,
               place_of_supply = ?,
               customer_id = ?,
+              invoice_date = ?,
+              financial_year = ?,
+              invoice_prefix = ?,
+              ar_number = ?,
+              gate_pass_number = ?,
+              gate_pass_date = ?,
+              purchase_order_number = ?,
+              purchase_order_date = ?,
               subtotal_gross_paise = ?,
               total_discount_paise = ?,
               taxable_amount_paise = ?,
@@ -2703,6 +2727,14 @@ export const worker = {
             b.buyer_pincode || b.buyerPincode || null,
             placeOfSupply,
             customerId,
+            invoiceDate,
+            targetFY,
+            invoicePrefix,
+            arNumber,
+            gatePassNumber,
+            gatePassDate,
+            purchaseOrderNumber,
+            purchaseOrderDate,
             totals.subtotalGrossPaise,
             totals.totalDiscountPaise,
             totals.taxableAmountPaise,
@@ -2826,14 +2858,17 @@ export const worker = {
           }
         }
 
-        // Derive or validate financial year from stored record or invoice date (never fall back to a hardcoded string)
-        const fy = invoice.financial_year || getFinancialYear(invoice.invoice_date);
+        // Invoice number and financial year follow the selected invoice date, never the current date.
+        const issueDate = invoice.invoice_date || indiaDateString();
+        if (!isValidInvoiceDate(issueDate)) return errorResponse('Invoice Date is missing or invalid. Edit the Draft and select a valid date before issuing.', 422);
+        if (issueDate > indiaDateString()) return errorResponse('Future-dated invoices cannot be issued.', 422);
+        const fy = getFinancialYear(issueDate);
         const expectedPrefix = getInvoicePrefix(fy);
 
-        if (invoice.invoice_prefix !== expectedPrefix || invoice.financial_year !== fy) {
+        if (invoice.invoice_date !== issueDate || invoice.invoice_prefix !== expectedPrefix || invoice.financial_year !== fy) {
           await env.DB.prepare(
-            "UPDATE invoices SET financial_year = ?, invoice_prefix = ?, updated_at = datetime('now') WHERE id = ?"
-          ).bind(fy, expectedPrefix, invId).run();
+            "UPDATE invoices SET invoice_date = ?, financial_year = ?, invoice_prefix = ?, updated_at = datetime('now') WHERE id = ?"
+          ).bind(issueDate, fy, expectedPrefix, invId).run();
         }
 
         let nextSequence: number;
