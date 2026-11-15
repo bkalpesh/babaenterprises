@@ -3916,7 +3916,7 @@ assertTest('TC-107', 'Invoice PDF Fields', 'POSITIVE', 'Invoice HTML renders AR,
 
 assertTest('TC-109', 'Invoice NULL Reference Fields', 'POSITIVE', 'Invoice preview and print HTML always show all five reference labels when database values are NULL', () => {
   const html = generateInvoiceHTML(
-    { legal_name: 'BABA ENTERPRISES' } as any,
+    { legal_name: 'BABA ENTERPRISES' },
     {
       status: 'Issued',
       invoice_number: 'BE/26-27/0162',
@@ -3944,7 +3944,7 @@ assertTest('TC-109', 'Invoice NULL Reference Fields', 'POSITIVE', 'Invoice previ
       gate_pass_date: null,
       purchase_order_number: null,
       purchase_order_date: null,
-    } as any,
+    },
     []
   );
   const expectedBlankRows = [
