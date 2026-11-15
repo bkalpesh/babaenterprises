@@ -47,6 +47,21 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+function indiaDateString(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
+function isValidInvoiceDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 /** Encode binary PDF data for the Resend JSON attachments API without argument-size overflow. */
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -903,6 +918,10 @@ export const worker = {
           const quoteNumber = `${prefix}${String(nextSeq).padStart(4, '0')}`;
           const validUntilDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
           const customerId = b.customer_id || b.customerId || null;
+          const customerArRow = customerId
+            ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
+            : null;
+          const arNumber = customerArRow?.ar_number || null;
 
           // Build batch operations with optional customer_id and sequence log
           const batchOps: any[] = [];
@@ -919,8 +938,8 @@ export const worker = {
                   status, subtotal_gross_paise, total_discount_paise, taxable_amount_paise,
                   cgst_amount_paise, sgst_amount_paise, igst_amount_paise, total_tax_paise,
                   round_off_paise, total_amount_paise, payment_terms, delivery_terms, notes,
-                  is_interstate, customer_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  is_interstate, customer_id, ar_number
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 quoteId,
                 quoteNumber,
@@ -953,7 +972,8 @@ export const worker = {
                 b.delivery_terms || null,
                 b.notes || null,
                 isInterstate ? 1 : 0,
-                customerId
+                customerId,
+                arNumber
               ),
             ];
 
@@ -1219,6 +1239,10 @@ export const worker = {
         const applyRoundOff = b.apply_round_off !== undefined ? (b.apply_round_off ? true : false) : (b.applyRoundOff ? true : true);
         const totals = computeTotals(computedItems, applyRoundOff);
         const customerId = b.customer_id || b.customerId || quote.customer_id || null;
+        const customerArRow = customerId
+          ? await env.DB.prepare('SELECT ar_number FROM customers WHERE id = ?').bind(customerId).first<{ ar_number: string | null }>()
+          : null;
+        const arNumber = customerArRow?.ar_number || null;
 
         const batchStmts: any[] = [
           env.DB.prepare('DELETE FROM quotation_items WHERE quotation_id = ?').bind(quoteId),
@@ -1250,6 +1274,7 @@ export const worker = {
               notes = ?,
               is_interstate = ?,
               customer_id = ?,
+              ar_number = ?,
               pdf_r2_key = NULL,
               pdf_generated_at = NULL,
               updated_at = datetime('now')
@@ -1280,6 +1305,7 @@ export const worker = {
             b.notes || null,
             isInterstate ? 1 : 0,
             customerId,
+            arNumber,
             quoteId
           )
         ];
