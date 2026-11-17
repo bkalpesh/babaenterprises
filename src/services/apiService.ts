@@ -146,7 +146,7 @@ export const ApiService = {
   // Products (Database Authoritative)
   // ----------------------------------------------------------------------------
   async getProducts(): Promise<Product[]> {
-    const res = await fetch(`${API_BASE}/products`);
+    const res = await fetch(`${API_BASE}/products`, { headers: getAuthHeader() });
     if (!res.ok) {
       throw new Error(`Failed to load products from server (HTTP ${res.status})`);
     }
