@@ -15,6 +15,8 @@ export interface Product {
   gstRateBps?: number | null;
   sortOrder?: number;
   isActive?: boolean;
+  showOnWebsite?: boolean;
+  show_on_website?: number | boolean;
   // Aliases for DB compatibility
   hsn_code?: string | null;
   unit_price_paise?: number;
