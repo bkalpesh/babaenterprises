@@ -3003,22 +3003,25 @@ export const worker = {
 
         const liveSettings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
         if (!liveSettings) return errorResponse('Business settings are unavailable.', 503);
+        const cancelledSellerSnapshot = invoice.status === 'Cancelled'
+          ? await env.DB.prepare('SELECT * FROM invoice_seller_contact_snapshots WHERE invoice_id = ?').bind(invId).first<any>()
+          : null;
         const settings: BusinessSettings = invoice.status === 'Draft' ? liveSettings : {
           ...liveSettings,
           legal_name: invoice.seller_legal_name ?? liveSettings.legal_name,
           trade_name: invoice.seller_trade_name ?? liveSettings.trade_name,
           gstin: invoice.seller_gstin ?? liveSettings.gstin,
-          pan: invoice.seller_pan ?? liveSettings.pan,
-          state_name: invoice.seller_state_name ?? liveSettings.state_name,
+          pan: invoice.seller_pan ?? cancelledSellerSnapshot?.seller_pan ?? liveSettings.pan,
+          state_name: invoice.seller_state_name ?? cancelledSellerSnapshot?.seller_state_name ?? liveSettings.state_name,
           state_code: invoice.seller_state_code ?? liveSettings.state_code,
-          address_line1: invoice.seller_address_line1 ?? liveSettings.address_line1,
-          address_line2: invoice.seller_address_line2 ?? liveSettings.address_line2,
-          city: invoice.seller_city ?? liveSettings.city,
-          pincode: invoice.seller_pincode ?? liveSettings.pincode,
-          phone_primary: invoice.seller_phone_primary ?? liveSettings.phone_primary,
-          phone_secondary: invoice.seller_phone_secondary ?? liveSettings.phone_secondary,
-          email: invoice.seller_email ?? liveSettings.email,
-          website_url: invoice.seller_website_url ?? liveSettings.website_url,
+          address_line1: invoice.seller_address_line1 ?? cancelledSellerSnapshot?.seller_address_line1 ?? liveSettings.address_line1,
+          address_line2: invoice.seller_address_line2 ?? cancelledSellerSnapshot?.seller_address_line2 ?? liveSettings.address_line2,
+          city: invoice.seller_city ?? cancelledSellerSnapshot?.seller_city ?? liveSettings.city,
+          pincode: invoice.seller_pincode ?? cancelledSellerSnapshot?.seller_pincode ?? liveSettings.pincode,
+          phone_primary: invoice.seller_phone_primary ?? cancelledSellerSnapshot?.seller_phone_primary ?? liveSettings.phone_primary,
+          phone_secondary: invoice.seller_phone_secondary ?? cancelledSellerSnapshot?.seller_phone_secondary ?? liveSettings.phone_secondary,
+          email: invoice.seller_email ?? cancelledSellerSnapshot?.seller_email ?? liveSettings.email,
+          website_url: invoice.seller_website_url ?? cancelledSellerSnapshot?.seller_website_url ?? liveSettings.website_url,
         };
         const items = await env.DB.prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY line_number ASC')
           .bind(invId)
