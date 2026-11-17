@@ -172,7 +172,8 @@ export async function handleAccountingRequest(
 
     if (path === '/api/accounting/vouchers' && method === 'POST') {
       const body = await request.json() as Record<string, any>;
-      const types = ['OPENING', 'SALES', 'PURCHASE', 'RECEIPT', 'PAYMENT', 'JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE', 'REVERSAL'];
+      // Only generic Journal vouchers are enabled until dedicated workflows are implemented.
+      const types = ['JOURNAL'];
       const voucherType = text(body.voucher_type, 30);
       const voucherDate = body.voucher_date;
       const financialYear = text(body.financial_year, 30) || 'FY2026-27';
