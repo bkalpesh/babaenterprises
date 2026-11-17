@@ -79,6 +79,8 @@ export interface BusinessContactInfo {
   pincode: string;
   country: string;
   phones: string[];
+  email?: string;
+  website?: string;
   gstin: string;
   operatingHours: string;
 }
