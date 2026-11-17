@@ -98,6 +98,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Contact state
   const [contactInfo, setContactInfo] = useState<BusinessContactInfo>(StorageService.getContactInfo());
   const [contactSaved, setContactSaved] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactError, setContactError] = useState('');
 
   useEffect(() => {
     if (isOpen && isAuthenticated) {
@@ -121,8 +123,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const loadAllData = async () => {
     setEnquiries(StorageService.getEnquiries());
     setReferences(StorageService.getReferences());
-    setContactInfo(StorageService.getContactInfo());
     loadProducts();
+    ApiService.getBusinessSettings().then((s) => {
+      setContactInfo((current) => ({
+        ...current, companyName: s.legal_name || current.companyName,
+        addressLine1: s.address_line1 || '', addressLine2: s.address_line2 || '',
+        city: s.city || current.city, state: s.state_name || current.state,
+        stateCode: s.state_code || current.stateCode, pincode: s.pincode || current.pincode,
+        phones: [s.phone_primary || '', s.phone_secondary || ''], email: s.email || '',
+        website: s.website_url || '', gstin: s.gstin || current.gstin,
+        operatingHours: s.operating_hours || '',
+      })); setContactError('');
+    }).catch((err) => setContactError(err.message || 'Unable to load business settings from database.'));
     try {
       const invList = await ApiService.getInvoices();
       setInvoices(invList);
@@ -269,12 +281,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Save Contact
-  const handleSaveContact = (e: React.FormEvent) => {
-    e.preventDefault();
-    StorageService.saveContactInfo(contactInfo);
-    setContactSaved(true);
-    setTimeout(() => setContactSaved(false), 2500);
-    onDataChange?.();
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault(); setContactSaving(true); setContactError(''); setContactSaved(false);
+    try {
+      await ApiService.saveBusinessSettings({
+        address_line1: contactInfo.addressLine1, address_line2: contactInfo.addressLine2,
+        phone_primary: contactInfo.phones[0] || '', phone_secondary: contactInfo.phones[1] || '',
+        email: contactInfo.email || '', website_url: contactInfo.website || '',
+        operating_hours: contactInfo.operatingHours || '',
+      });
+      setContactSaved(true); onDataChange?.(); window.setTimeout(() => setContactSaved(false), 2500);
+    } catch (err: any) { setContactError(err.message || 'Unable to save business settings.'); }
+    finally { setContactSaving(false); }
   };
 
   return (
@@ -1589,6 +1607,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Business Email</label>
+                    <input type="email" value={contactInfo.email || ''} onChange={(e) => setContactInfo({ ...contactInfo, email: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" placeholder="business@example.com" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Website URL</label>
+                    <input type="url" value={contactInfo.website || ''} onChange={(e) => setContactInfo({ ...contactInfo, website: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" placeholder="https://www.babaenterprises.in" />
+                  </div>
+
+                  <div>
                     <label className="text-xs font-semibold text-slate-700 block mb-1">Operating Hours</label>
                     <input
                       type="text"
@@ -1598,6 +1626,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
+                  {contactError && <p className="text-xs text-red-600" role="alert">{contactError}</p>}
                   <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
                     {contactSaved ? (
                       <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
@@ -1608,7 +1637,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <button
                       type="submit"
-                      className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[#102F59] px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#0755A5] sm:w-auto"
+                      disabled={contactSaving}
+                      className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[#102F59] px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#0755A5] disabled:opacity-60 sm:w-auto"
                     >
                       <Save className="w-4 h-4" />
                       <span>Save Information</span>
