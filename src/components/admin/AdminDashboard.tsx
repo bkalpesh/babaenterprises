@@ -1250,7 +1250,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                               <div className="flex items-center justify-end">
                                 <button
-                                  onClick={() => { setProductSaveError(null); setEditingProduct({ ...prod }); }}
+                                  onClick={() => { setProductSaveError(null); setIsCreatingProduct(false); setEditingProduct({ ...prod }); }}
                                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0755A5] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#102F59] focus:outline-none focus:ring-2 focus:ring-blue-200"
                                 >
                                   <Edit2 className="h-3.5 w-3.5" /> Edit details
@@ -1287,7 +1287,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <p className="mt-1 text-xs text-slate-500">{isCreatingProduct ? "Create a product record for quotations and invoices, with optional public website visibility." : "Update product pricing, statutory details and website visibility."}</p>
                           {!isCreatingProduct && <p className="text-[11px] text-slate-500">ID: {editingProduct.id}</p>}
                         </div>
-                        <button onClick={() => setEditingProduct(null)}>
+                        <button onClick={() => { setEditingProduct(null); setIsCreatingProduct(false); }}>
                           <X className="w-5 h-5 text-slate-400" />
                         </button>
                       </div>
