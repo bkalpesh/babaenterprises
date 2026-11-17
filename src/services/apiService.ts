@@ -143,6 +143,26 @@ export interface StagingQuotation {
 
 export const ApiService = {
   // ----------------------------------------------------------------------------
+  // Business Settings (Cloudflare D1 authoritative)
+  // ----------------------------------------------------------------------------
+  async getBusinessSettings(): Promise<any> {
+    const res = await fetch(`${API_BASE}/business-settings`, { headers: getAuthHeader() });
+    const data = await res.json() as any;
+    if (!res.ok || !data.success || !data.settings) throw new Error(data.error || `Failed to load business settings (HTTP ${res.status})`);
+    return data.settings;
+  },
+
+  async saveBusinessSettings(payload: Record<string, string>): Promise<any> {
+    const res = await fetch(`${API_BASE}/business-settings`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json() as any;
+    if (!res.ok || !data.success) throw new Error(data.error || `Failed to save business settings (HTTP ${res.status})`);
+    return data.settings;
+  },
+
+  // ----------------------------------------------------------------------------
   // Products (Database Authoritative)
   // ----------------------------------------------------------------------------
   async getProducts(includeHidden = false): Promise<Product[]> {
