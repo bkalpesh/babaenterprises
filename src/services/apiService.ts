@@ -145,8 +145,9 @@ export const ApiService = {
   // ----------------------------------------------------------------------------
   // Products (Database Authoritative)
   // ----------------------------------------------------------------------------
-  async getProducts(): Promise<Product[]> {
-    const res = await fetch(`${API_BASE}/products`, { headers: getAuthHeader() });
+  async getProducts(includeHidden = false): Promise<Product[]> {
+    // Public pages must never inherit the Admin session: the Worker returns hidden products to authenticated Admin requests.
+    const res = await fetch(`${API_BASE}/products`, includeHidden ? { headers: getAuthHeader() } : {});
     if (!res.ok) {
       throw new Error(`Failed to load products from server (HTTP ${res.status})`);
     }
