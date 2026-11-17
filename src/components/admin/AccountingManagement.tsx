@@ -42,7 +42,6 @@ export const AccountingManagement: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [voucherDate, setVoucherDate] = useState('2026-04-01');
-  const [voucherType, setVoucherType] = useState('JOURNAL');
   const [narration, setNarration] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([
     { account_id: '', debit: '', credit: '', description: '' },
@@ -92,7 +91,7 @@ export const AccountingManagement: React.FC = () => {
       const result = await accountingFetch<{ voucher: Voucher }>('vouchers', {
         method: 'POST',
         body: JSON.stringify({
-          voucher_type: voucherType, voucher_date: voucherDate, financial_year: periodId,
+          voucher_type: 'JOURNAL', voucher_date: voucherDate, financial_year: periodId,
           narration, lines: payloadLines,
         }),
       });
@@ -166,9 +165,9 @@ export const AccountingManagement: React.FC = () => {
 
           {tab === 'vouchers' && <>
             <form onSubmit={createDraft} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-              <div><h3 className="text-sm font-bold text-slate-900">Create Draft Voucher</h3><p className="text-[11px] text-slate-500">Enter amounts in rupees. Debits and credits must balance exactly.</p></div>
+              <div><h3 className="text-sm font-bold text-slate-900">Create Draft Voucher</h3><p className="text-[11px] text-slate-500">General journal entry only. Enter amounts in rupees; debits and credits must balance exactly.</p></div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <label className="text-[11px] font-semibold text-slate-600">Voucher type<select className={inputClass + ' mt-1'} value={voucherType} onChange={e => setVoucherType(e.target.value)}>{['JOURNAL', 'RECEIPT', 'PAYMENT', 'CONTRA', 'PURCHASE', 'CREDIT_NOTE', 'DEBIT_NOTE'].map(t => <option key={t}>{t}</option>)}</select></label>
+                <div className="text-[11px] font-semibold text-slate-600">Voucher type<div className={inputClass + ' mt-1 bg-slate-50'}>Journal</div></div>
                 <label className="text-[11px] font-semibold text-slate-600">Date<input className={inputClass + ' mt-1'} type="date" min={periods.find(p => p.id === periodId)?.start_date} max={periods.find(p => p.id === periodId)?.end_date} value={voucherDate} onChange={e => setVoucherDate(e.target.value)} required /></label>
                 <label className="text-[11px] font-semibold text-slate-600">Narration<input className={inputClass + ' mt-1'} value={narration} onChange={e => setNarration(e.target.value)} placeholder="Purpose / reference" /></label>
               </div>
