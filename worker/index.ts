@@ -408,7 +408,7 @@ export const worker = {
       if (url.pathname === '/api/products') {
         if (method === 'GET') {
           const isAdmin = await checkAdminAuth(request, env);
-          const results = await env.DB.prepare(isAdmin ? 'SELECT * FROM products ORDER BY sort_order ASC, created_at ASC' : 'SELECT * FROM products WHERE show_on_website = 1 AND is_active = 1 ORDER BY sort_order ASC, created_at ASC').all<DBProduct>();
+          const results = await env.DB.prepare(isAdmin ? 'SELECT * FROM products ORDER BY sort_order ASC, created_at ASC' : 'SELECT * FROM products WHERE show_on_website = 1 ORDER BY sort_order ASC, created_at ASC').all<DBProduct>();
           return jsonResponse({ success: true, products: results.results });
         }
         if (method === 'POST') {
