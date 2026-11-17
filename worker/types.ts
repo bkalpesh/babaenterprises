@@ -91,6 +91,8 @@ export interface BusinessSettings {
   bank_ifsc: string | null;
   default_payment_terms: string | null;
   default_invoice_notes: string | null;
+  website_url: string;
+  operating_hours: string;
   updated_at: string;
 }
 
@@ -156,6 +158,16 @@ export interface DBInvoice {
   seller_legal_name: string;
   seller_trade_name: string;
   seller_address: string;
+  seller_pan?: string | null;
+  seller_state_name?: string | null;
+  seller_address_line1?: string | null;
+  seller_address_line2?: string | null;
+  seller_city?: string | null;
+  seller_pincode?: string | null;
+  seller_phone_primary?: string | null;
+  seller_phone_secondary?: string | null;
+  seller_email?: string | null;
+  seller_website_url?: string | null;
   buyer_name: string | null;
   buyer_trade_name: string | null;
   buyer_address: string | null;
