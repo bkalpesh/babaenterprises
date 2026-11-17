@@ -83,6 +83,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -1111,6 +1112,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           Manage your product records, statutory classifications and catalogue availability from one place.
                         </p>
                       </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                      <button onClick={() => { setProductSaveError(null); setIsCreatingProduct(true); setEditingProduct({ id: '', name: '', slug: '', category: 'rubber', categoryLabel: 'Rubber Components', image: '', shortDescription: '', fullDescription: '', applications: [], materialsSupported: [], features: [], hsnCode: '', unitPricePaise: 0, gstRateBps: null, isActive: true, showOnWebsite: true }); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#102F59] shadow-sm hover:bg-blue-50"><Plus className="h-4 w-4" /> Add New Product</button>
                       <button
                         onClick={loadProducts}
                         disabled={productsLoading}
@@ -1119,6 +1122,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <RefreshCw className={`h-4 w-4 ${productsLoading ? 'animate-spin' : ''}`} />
                         {productsLoading ? 'Refreshing…' : 'Refresh catalogue'}
                       </button>
+                      </div>
                     </div>
                   </section>
 
@@ -1279,9 +1283,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="h-[100dvh] max-h-[100dvh] w-full space-y-5 overflow-y-auto bg-white p-3 shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-2xl sm:p-6 md:p-7">
                       <div className="flex items-center justify-between border-b pb-3">
                         <div>
-                          <h4 className="font-heading text-lg font-bold text-slate-900">Edit product details</h4>
-                          <p className="mt-1 text-xs text-slate-500">Update pricing and statutory details. Changes are saved to the live catalogue database.</p>
-                          <p className="text-[11px] text-slate-500">ID: {editingProduct.id}</p>
+                          <h4 className="font-heading text-lg font-bold text-slate-900">{isCreatingProduct ? "Add New Product" : "Edit product details"}</h4>
+                          <p className="mt-1 text-xs text-slate-500">{isCreatingProduct ? "Create a product record for quotations and invoices, with optional public website visibility." : "Update product pricing, statutory details and website visibility."}</p>
+                          {!isCreatingProduct && <p className="text-[11px] text-slate-500">ID: {editingProduct.id}</p>}
                         </div>
                         <button onClick={() => setEditingProduct(null)}>
                           <X className="w-5 h-5 text-slate-400" />
@@ -1306,6 +1310,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
+                          {isCreatingProduct && <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="text-xs font-semibold text-slate-700 block mb-1">Product Category</label><select value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value as Product["category"], categoryLabel: e.target.options[e.target.selectedIndex].text })} className="w-full min-h-11 px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white"><option value="rubber">Rubber Components</option><option value="plastic">Industrial Plastic</option><option value="sealing">Sealing Solutions</option><option value="moulded">Moulded Components</option><option value="custom">Customised Parts</option><option value="extruded">Profiles & Extrusions</option></select></div><div><label className="text-xs font-semibold text-slate-700 block mb-1">Image URL (optional)</label><input type="url" value={editingProduct.image || ""} onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })} placeholder="https://…" className="w-full min-h-11 px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg" /></div></div>}
                           <label className="text-xs font-semibold text-slate-700 block mb-1">HSN / SAC Code</label>
                           <input
                             type="text"
@@ -1364,6 +1369,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
 
+                      <div className="flex items-center gap-2 pt-1"><input type="checkbox" id="product_show_on_website" checked={Boolean(editingProduct.showOnWebsite ?? (editingProduct.show_on_website === undefined ? true : Boolean(editingProduct.show_on_website)))} onChange={(e) => setEditingProduct({ ...editingProduct, showOnWebsite: e.target.checked, show_on_website: e.target.checked ? 1 : 0 })} className="rounded text-[#0755A5] focus:ring-[#0755A5]" /><label htmlFor="product_show_on_website" className="text-xs font-semibold text-slate-700">Show on public website</label><span className="text-[11px] text-slate-500">(Does not affect invoicing)</span></div>
                       <div className="flex items-center gap-2 pt-1">
                         <input
                           type="checkbox"
@@ -1380,7 +1386,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="pt-4 flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3 border-t border-slate-200">
                         <button
                           type="button"
-                          onClick={() => setEditingProduct(null)}
+                          onClick={() => { setEditingProduct(null); setIsCreatingProduct(false); }}
                           className="min-h-10 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
                         >
                           Cancel
@@ -1392,9 +1398,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             if (!editingProduct) return;
                             setIsSavingProduct(true);
                             setProductSaveError(null);
-                            const res = await ApiService.updateProduct(editingProduct.id, editingProduct);
+                            if (isCreatingProduct && (!editingProduct.name.trim() || !editingProduct.shortDescription.trim() || !editingProduct.fullDescription?.trim())) { setProductSaveError('Product name, short description and full description are required.'); setIsSavingProduct(false); return; }
+                            const res = isCreatingProduct ? await ApiService.createProduct(editingProduct) : await ApiService.updateProduct(editingProduct.id, editingProduct);
                             if (res.success) {
                               setEditingProduct(null);
+                              setIsCreatingProduct(false);
                               await loadProducts();
                               onDataChange?.();
                             } else {
@@ -1404,7 +1412,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                           className="min-h-10 px-5 py-2.5 text-sm bg-[#0755A5] text-white font-semibold rounded-lg hover:bg-[#102F59] disabled:opacity-50"
                         >
-                          {isSavingProduct ? 'Saving to D1...' : 'Save Changes'}
+                          {isSavingProduct ? 'Saving to D1...' : (isCreatingProduct ? 'Create Product' : 'Save Changes')}
                         </button>
                       </div>
                     </div>
