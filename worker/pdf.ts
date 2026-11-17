@@ -211,6 +211,7 @@ export function generateInvoiceHTML(
           <div class="meta-line"><span class="bold">State:</span> ${settings.state_name} (Code: ${settings.state_code})</div>
           <div class="meta-line"><span class="bold">Phone:</span> ${settings.phone_primary} / ${settings.phone_secondary}</div>
           <div class="meta-line"><span class="bold">Email:</span> ${settings.email}</div>
+          ${settings.website_url ? `<div class="meta-line"><span class="bold">Website:</span> ${settings.website_url}</div>` : ''}
         </td>
         <td class="doc-col">
           <div class="doc-title">${invoice.status === 'Draft' ? 'DRAFT TAX INVOICE' : 'TAX INVOICE'}</div>
