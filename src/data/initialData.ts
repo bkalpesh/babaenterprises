@@ -11,6 +11,8 @@ export const OFFICIAL_BUSINESS_INFO: BusinessContactInfo = {
   pincode: '411039',
   country: 'India',
   phones: ['9028260011', '8788266934'],
+  email: 'babaenterprises09@gmail.com',
+  website: 'https://www.babaenterprises.in',
   gstin: '27AGCPB8322L1ZG',
   operatingHours: 'Mon - Sat: 9:00 AM - 7:00 PM IST',
 };
