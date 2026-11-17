@@ -1584,7 +1584,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-700 block mb-1">State</label>
-                      <input type="text" value={contactInfo.state} onChange={(e) => setContactInfo({ ...contactInfo, state: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" />
+                      <input type="text" value={contactInfo.state} disabled className="w-full px-3 py-2 text-xs border rounded-lg bg-slate-50 text-slate-700" />
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-700 block mb-1">PIN Code</label>
