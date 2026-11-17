@@ -286,6 +286,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await ApiService.saveBusinessSettings({
         address_line1: contactInfo.addressLine1, address_line2: contactInfo.addressLine2,
+        city: contactInfo.city, pincode: contactInfo.pincode,
         phone_primary: contactInfo.phones[0] || '', phone_secondary: contactInfo.phones[1] || '',
         email: contactInfo.email || '', website_url: contactInfo.website || '',
         operating_hours: contactInfo.operatingHours || '',
@@ -1567,13 +1568,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-700 block mb-1">Address Line 2 (City / Pincode)</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">Address Line 2</label>
                     <input
                       type="text"
                       value={contactInfo.addressLine2}
                       onChange={(e) => setContactInfo({ ...contactInfo, addressLine2: e.target.value })}
                       className="w-full px-3 py-2 text-xs border rounded-lg"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">City</label>
+                      <input type="text" value={contactInfo.city} onChange={(e) => setContactInfo({ ...contactInfo, city: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">State</label>
+                      <input type="text" value={contactInfo.state} onChange={(e) => setContactInfo({ ...contactInfo, state: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">PIN Code</label>
+                      <input type="text" value={contactInfo.pincode} onChange={(e) => setContactInfo({ ...contactInfo, pincode: e.target.value })} className="w-full px-3 py-2 text-xs border rounded-lg" />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
