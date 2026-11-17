@@ -13,7 +13,9 @@ const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2
 const buttonClass = 'rounded-lg bg-[#102F59] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0755A5] disabled:cursor-not-allowed disabled:opacity-50';
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format((Number(paise) || 0) / 100);
 
-async function accountingFetch(path: string, init?: RequestInit) {
+type AccountingApiResult<T> = { success: boolean; error?: string } & T;
+
+async function accountingFetch<T>(path: string, init?: RequestInit): Promise<AccountingApiResult<T>> {
   const token = sessionStorage.getItem('baba_admin_token');
   const response = await fetch('/api/accounting/' + path, {
     ...init,
@@ -23,7 +25,7 @@ async function accountingFetch(path: string, init?: RequestInit) {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
     },
   });
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => ({})) as AccountingApiResult<T>;
   if (!response.ok || !data.success) throw new Error(data.error || 'Accounting request failed.');
   return data;
 }
@@ -51,10 +53,10 @@ export const AccountingManagement: React.FC = () => {
     setLoading(true); setError('');
     try {
       const [p, a, v, tb] = await Promise.all([
-        accountingFetch('periods'),
-        accountingFetch('accounts'),
-        accountingFetch('vouchers?financial_year=' + encodeURIComponent(periodId)),
-        accountingFetch('trial-balance?financial_year=' + encodeURIComponent(periodId)),
+        accountingFetch<{ periods: Period[] }>('periods'),
+        accountingFetch<{ accounts: Account[] }>('accounts'),
+        accountingFetch<{ vouchers: Voucher[] }>('vouchers?financial_year=' + encodeURIComponent(periodId)),
+        accountingFetch<{ accounts: TBRow[] }>('trial-balance?financial_year=' + encodeURIComponent(periodId)),
       ]);
       setPeriods(p.periods || []);
       setAccounts(a.accounts || []);
@@ -87,7 +89,7 @@ export const AccountingManagement: React.FC = () => {
         credit_paise: Math.round((Number(line.credit) || 0) * 100),
         description: line.description,
       }));
-      const result = await accountingFetch('vouchers', {
+      const result = await accountingFetch<{ voucher: Voucher }>('vouchers', {
         method: 'POST',
         body: JSON.stringify({
           voucher_type: voucherType, voucher_date: voucherDate, financial_year: periodId,
@@ -107,7 +109,7 @@ export const AccountingManagement: React.FC = () => {
     if (!window.confirm('Post this voucher? Posted vouchers are immutable; corrections require a reversal.')) return;
     setSaving(true); setError(''); setNotice('');
     try {
-      const result = await accountingFetch('vouchers/' + encodeURIComponent(id) + '/post', { method: 'POST' });
+      const result = await accountingFetch<{ voucher: Voucher }>('vouchers/' + encodeURIComponent(id) + '/post', { method: 'POST' });
       setNotice('Voucher posted successfully: ' + result.voucher.voucher_number);
       await load();
     } catch (e: any) { setError(e.message || 'Unable to post voucher.'); }
