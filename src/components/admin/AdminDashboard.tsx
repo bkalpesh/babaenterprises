@@ -35,6 +35,7 @@ import { CustomerManagement } from './CustomerManagement';
 import { QuotationCreateModal } from './QuotationCreateModal';
 import { InvoiceCreateModal } from './InvoiceCreateModal';
 import { QuotationStatusModal } from './QuotationStatusModal';
+import { AccountingManagement } from './AccountingManagement';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -54,8 +55,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Active Tab: 'enquiries' | 'customers' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'
-  const [activeTab, setActiveTab] = useState<'enquiries' | 'customers' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact'>('enquiries');
+  // Active administration tab, including the accounting ledger.
+  const [activeTab, setActiveTab] = useState<'enquiries' | 'customers' | 'quotations' | 'invoices' | 'products' | 'references' | 'contact' | 'accounting'>('enquiries');
 
   // Modals state
   const [isQuotationModalOpen, setIsQuotationModalOpen] = useState(false);
@@ -477,6 +478,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 <Building2 className="w-4 h-4" />
                 <span>Customer References ({references.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('accounting')}
+                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'accounting' ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Accounting & Ledger</span>
               </button>
 
               <button
@@ -1521,6 +1530,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             )}
+
+            {activeTab === 'accounting' && <AccountingManagement />}
 
             {/* TAB 4: CONTACT & BUSINESS */}
             {activeTab === 'contact' && (
