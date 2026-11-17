@@ -143,17 +143,25 @@ export async function handleAccountingRequest(
       const asOf = url.searchParams.get('as_of');
       if (asOf && !isDate(asOf)) return fail('as_of must be a valid YYYY-MM-DD date.', 422);
       const result = await env.DB.prepare(`
-        SELECT a.id, a.account_code, a.name, a.parent_account_id, a.account_type,
-          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise ELSE 0 END), 0) AS debit_paise,
-          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.credit_paise ELSE 0 END), 0) AS credit_paise
-        FROM ledger_accounts a
-        LEFT JOIN accounting_voucher_lines l ON l.account_id = a.id
-        LEFT JOIN accounting_vouchers v ON v.id = l.voucher_id
-          AND v.financial_year = ? AND v.status = 'Posted'
-          AND (? IS NULL OR date(v.voucher_date) <= date(?))
-        WHERE a.is_group = 0
-        GROUP BY a.id, a.account_code, a.name, a.parent_account_id, a.account_type
-        ORDER BY a.account_code
+        WITH account_movements AS (
+          SELECT a.id, a.account_code, a.name, a.parent_account_id, a.account_type,
+            COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise ELSE 0 END), 0) AS total_debit_paise,
+            COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.credit_paise ELSE 0 END), 0) AS total_credit_paise
+          FROM ledger_accounts a
+          LEFT JOIN accounting_voucher_lines l ON l.account_id = a.id
+          LEFT JOIN accounting_vouchers v ON v.id = l.voucher_id
+            AND v.financial_year = ? AND v.status = 'Posted'
+            AND (? IS NULL OR date(v.voucher_date) <= date(?))
+          WHERE a.is_group = 0
+          GROUP BY a.id, a.account_code, a.name, a.parent_account_id, a.account_type
+        )
+        SELECT id, account_code, name, parent_account_id, account_type,
+          CASE WHEN total_debit_paise > total_credit_paise
+            THEN total_debit_paise - total_credit_paise ELSE 0 END AS debit_paise,
+          CASE WHEN total_credit_paise > total_debit_paise
+            THEN total_credit_paise - total_debit_paise ELSE 0 END AS credit_paise
+        FROM account_movements
+        ORDER BY account_code
       `).bind(period, asOf || null, asOf || null).all();
       const rows = result.results as Array<{ debit_paise: number; credit_paise: number }>;
       const totalDebit = rows.reduce((sum, row) => sum + Number(row.debit_paise || 0), 0);
@@ -166,7 +174,7 @@ export async function handleAccountingRequest(
         total_debit_paise: totalDebit,
         total_credit_paise: totalCredit,
         is_balanced: totalDebit === totalCredit,
-        note: 'Only posted vouchers are included. Opening balances must be entered and reconciled before relying on financial statements.',
+        note: 'Net posted account balances only. Opening balances must be entered and reconciled before relying on financial statements.',
       });
     }
 
