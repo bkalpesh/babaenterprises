@@ -26,6 +26,7 @@ import {
 } from './financials.ts';
 import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin.ts';
 import { generateInvoiceHTML, generateQuotationPDF } from './pdf.ts';
+import { handleAccountingRequest } from './accounting.ts';
 
 // ------------------------------------------------------------------------------
 // Cryptographically Secure Helpers & Timing-Safe Comparison
@@ -352,6 +353,17 @@ export const worker = {
         const isAuth = await checkAdminAuth(request, env);
         return jsonResponse({ authenticated: isAuth }, isAuth ? 200 : 401);
       }
+
+      // ------------------------------------------------------------------------
+      // ACCOUNTING MODULE (Authenticated, double-entry ledger APIs)
+      // ------------------------------------------------------------------------
+      const accountingResponse = await handleAccountingRequest(
+        request,
+        env,
+        (req) => checkAdminAuth(req, env),
+        getAuthActor
+      );
+      if (accountingResponse) return accountingResponse;
 
       // ------------------------------------------------------------------------
       // 2. BUSINESS SETTINGS
