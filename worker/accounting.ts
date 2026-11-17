@@ -262,16 +262,21 @@ export async function handleAccountingRequest(
       const voucher = await env.DB.prepare('SELECT * FROM accounting_vouchers WHERE id = ?').bind(voucherId).first<any>();
       if (!voucher) return fail('Voucher not found.', 404);
       if (voucher.status !== 'Draft') return fail(`Only Draft vouchers can be posted. Current status: ${voucher.status}.`, 409);
-      const result = await env.DB.prepare(`
-        UPDATE accounting_vouchers
-        SET status = 'Posted', posted_by = ?, posted_at = datetime('now'), updated_at = datetime('now')
-        WHERE id = ? AND status = 'Draft'
-      `).bind(actor, voucherId).run();
-      if (!Number(result.meta?.changes || 0)) return fail('Voucher status changed before posting. Refresh and try again.', 409);
-      await env.DB.prepare(`
-        INSERT INTO accounting_audit_logs (id, voucher_id, action, actor, details_json)
-        VALUES (?, ?, 'VOUCHER_POSTED', ?, ?)
-      `).bind(`acal-${crypto.randomUUID()}`, voucherId, actor, JSON.stringify({ voucher_number: voucher.voucher_number })).run();
+      // D1 batch is atomic: the audit row is inserted only if this UPDATE
+      // actually changed the Draft voucher to Posted.
+      const postBatch = await env.DB.batch([
+        env.DB.prepare(`
+          UPDATE accounting_vouchers
+          SET status = 'Posted', posted_by = ?, posted_at = datetime('now'), updated_at = datetime('now')
+          WHERE id = ? AND status = 'Draft'
+        `).bind(actor, voucherId),
+        env.DB.prepare(`
+          INSERT INTO accounting_audit_logs (id, voucher_id, action, actor, details_json)
+          SELECT ?, ?, 'VOUCHER_POSTED', ?, ?
+          WHERE changes() > 0
+        `).bind(`acal-${crypto.randomUUID()}`, voucherId, actor, JSON.stringify({ voucher_number: voucher.voucher_number })),
+      ]);
+      if (!Number(postBatch[0]?.meta?.changes || 0)) return fail('Voucher status changed before posting. Refresh and try again.', 409);
       const posted = await env.DB.prepare('SELECT * FROM accounting_vouchers WHERE id = ?').bind(voucherId).first();
       return response({ success: true, voucher: posted });
     }
