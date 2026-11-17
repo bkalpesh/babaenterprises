@@ -171,6 +171,8 @@ export const ApiService = {
       gstRateBps: p.gst_rate_bps !== undefined && p.gst_rate_bps !== null ? Number(p.gst_rate_bps) : null,
       sortOrder: p.sort_order !== undefined ? Number(p.sort_order) : 0,
       isActive: p.is_active === 1 || p.is_active === true || p.isActive === true,
+      showOnWebsite: p.show_on_website === undefined ? true : (p.show_on_website === 1 || p.show_on_website === true),
+      show_on_website: p.show_on_website ?? 1,
       hsn_code: p.hsn_code || p.hsnCode || null,
       unit_price_paise: p.unit_price_paise !== undefined ? Number(p.unit_price_paise) : 0,
       gst_rate_bps: p.gst_rate_bps !== undefined && p.gst_rate_bps !== null ? Number(p.gst_rate_bps) : null,
@@ -199,6 +201,7 @@ export const ApiService = {
           short_description: payload.shortDescription !== undefined ? payload.shortDescription : payload.short_description,
           full_description: payload.fullDescription !== undefined ? payload.fullDescription : payload.full_description,
           is_active: payload.isActive !== undefined ? (payload.isActive ? 1 : 0) : (payload.is_active !== undefined ? payload.is_active : undefined),
+          show_on_website: payload.showOnWebsite !== undefined ? (payload.showOnWebsite ? 1 : 0) : (payload.show_on_website !== undefined ? payload.show_on_website : undefined),
         }),
       });
       const data = await res.json() as any;
@@ -234,6 +237,7 @@ export const ApiService = {
           materials: payload.materialsSupported || [],
           features: payload.features || [],
           is_active: payload.isActive !== undefined ? (payload.isActive ? 1 : 0) : 1,
+          show_on_website: payload.showOnWebsite !== undefined ? (payload.showOnWebsite ? 1 : 0) : (payload.show_on_website !== undefined ? payload.show_on_website : 1),
           sort_order: payload.sortOrder || payload.sort_order || 0,
         }),
       });
