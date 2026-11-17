@@ -109,7 +109,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProductsLoading(true);
     setProductsError(null);
     try {
-      const dbProducts = await ApiService.getProducts();
+      const dbProducts = await ApiService.getProducts(true);
       setProducts(dbProducts);
     } catch (err: any) {
       setProductsError(err.message || 'Failed to load products from database endpoint.');
