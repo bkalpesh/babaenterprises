@@ -22,6 +22,41 @@ ALTER TABLE invoices ADD COLUMN seller_website_url TEXT;
 
 -- Preserve the seller contact information that existing invoice HTML currently
 -- displays before switching issued/cancelled invoices to immutable snapshots.
+-- Cancelled invoices are fully immutable, so capture their currently-rendered
+-- seller contact details in a separate immutable snapshot table.
+CREATE TABLE invoice_seller_contact_snapshots (
+  invoice_id TEXT PRIMARY KEY REFERENCES invoices(id),
+  seller_pan TEXT,
+  seller_state_name TEXT,
+  seller_address_line1 TEXT,
+  seller_address_line2 TEXT,
+  seller_city TEXT,
+  seller_pincode TEXT,
+  seller_phone_primary TEXT,
+  seller_phone_secondary TEXT,
+  seller_email TEXT,
+  seller_website_url TEXT
+);
+
+INSERT INTO invoice_seller_contact_snapshots (
+  invoice_id, seller_pan, seller_state_name, seller_address_line1, seller_address_line2,
+  seller_city, seller_pincode, seller_phone_primary, seller_phone_secondary, seller_email, seller_website_url
+)
+SELECT id,
+  (SELECT pan FROM business_settings WHERE id = 1),
+  (SELECT state_name FROM business_settings WHERE id = 1),
+  (SELECT address_line1 FROM business_settings WHERE id = 1),
+  (SELECT address_line2 FROM business_settings WHERE id = 1),
+  (SELECT city FROM business_settings WHERE id = 1),
+  (SELECT pincode FROM business_settings WHERE id = 1),
+  (SELECT phone_primary FROM business_settings WHERE id = 1),
+  (SELECT phone_secondary FROM business_settings WHERE id = 1),
+  (SELECT email FROM business_settings WHERE id = 1),
+  (SELECT website_url FROM business_settings WHERE id = 1)
+FROM invoices WHERE status = 'Cancelled';
+
+-- Issued and Draft rows can be updated by the existing lifecycle trigger.
+-- Cancelled rows are excluded because their records are completely frozen.
 UPDATE invoices SET
   seller_pan = (SELECT pan FROM business_settings WHERE id = 1),
   seller_state_name = (SELECT state_name FROM business_settings WHERE id = 1),
@@ -32,7 +67,8 @@ UPDATE invoices SET
   seller_phone_primary = (SELECT phone_primary FROM business_settings WHERE id = 1),
   seller_phone_secondary = (SELECT phone_secondary FROM business_settings WHERE id = 1),
   seller_email = (SELECT email FROM business_settings WHERE id = 1),
-  seller_website_url = (SELECT website_url FROM business_settings WHERE id = 1);
+  seller_website_url = (SELECT website_url FROM business_settings WHERE id = 1)
+WHERE status <> 'Cancelled';
 
 -- Supplement the existing invoice immutability trigger for the newly-added
 -- seller snapshot columns. This protects both Issued and Cancelled legal records.
