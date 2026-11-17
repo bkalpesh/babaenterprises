@@ -271,21 +271,58 @@ export async function handleAccountingRequest(
       const voucher = await env.DB.prepare('SELECT * FROM accounting_vouchers WHERE id = ?').bind(voucherId).first<any>();
       if (!voucher) return fail('Voucher not found.', 404);
       if (voucher.status !== 'Draft') return fail(`Only Draft vouchers can be posted. Current status: ${voucher.status}.`, 409);
-      // D1 batch is atomic: the audit row is inserted only if this UPDATE
-      // actually changed the Draft voucher to Posted.
+      // Allocate a sequence only while this voucher is still Draft. D1 batch
+      // runs these statements atomically, so concurrent retries cannot consume
+      // extra numbers and a failed posting rolls the allocation back.
       const postBatch = await env.DB.batch([
         env.DB.prepare(`
-          UPDATE accounting_vouchers
-          SET status = 'Posted', posted_by = ?, posted_at = datetime('now'), updated_at = datetime('now')
+          INSERT INTO accounting_voucher_sequences (financial_year, voucher_type, last_number)
+          SELECT financial_year, voucher_type, 1
+          FROM accounting_vouchers
           WHERE id = ? AND status = 'Draft'
+          ON CONFLICT (financial_year, voucher_type)
+          DO UPDATE SET last_number = accounting_voucher_sequences.last_number + 1
+        `).bind(voucherId),
+        env.DB.prepare(`
+          UPDATE accounting_vouchers
+          SET voucher_number = (
+                SELECT
+                  CASE accounting_vouchers.voucher_type
+                    WHEN 'OPENING' THEN 'OB'
+                    WHEN 'SALES' THEN 'SAL'
+                    WHEN 'PURCHASE' THEN 'PUR'
+                    WHEN 'RECEIPT' THEN 'REC'
+                    WHEN 'PAYMENT' THEN 'PAY'
+                    WHEN 'JOURNAL' THEN 'JV'
+                    WHEN 'CONTRA' THEN 'CON'
+                    WHEN 'CREDIT_NOTE' THEN 'CN'
+                    WHEN 'DEBIT_NOTE' THEN 'DN'
+                    WHEN 'REVERSAL' THEN 'REV'
+                  END || '/' || substr(accounting_vouchers.financial_year, 3) || '/' ||
+                  printf('%06d', s.last_number)
+                FROM accounting_voucher_sequences s
+                WHERE s.financial_year = accounting_vouchers.financial_year
+                  AND s.voucher_type = accounting_vouchers.voucher_type
+              ),
+              status = 'Posted',
+              posted_by = ?,
+              posted_at = datetime('now'),
+              updated_at = datetime('now')
+          WHERE id = ? AND status = 'Draft'
+            AND EXISTS (
+              SELECT 1 FROM accounting_voucher_sequences s
+              WHERE s.financial_year = accounting_vouchers.financial_year
+                AND s.voucher_type = accounting_vouchers.voucher_type
+            )
         `).bind(actor, voucherId),
         env.DB.prepare(`
           INSERT INTO accounting_audit_logs (id, voucher_id, action, actor, details_json)
-          SELECT ?, ?, 'VOUCHER_POSTED', ?, ?
-          WHERE changes() > 0
-        `).bind(`acal-${crypto.randomUUID()}`, voucherId, actor, JSON.stringify({ voucher_number: voucher.voucher_number })),
+          SELECT ?, v.id, 'VOUCHER_POSTED', ?, json_object('voucher_number', v.voucher_number)
+          FROM accounting_vouchers v
+          WHERE v.id = ? AND v.status = 'Posted' AND changes() > 0
+        `).bind(`acal-${crypto.randomUUID()}`, actor, voucherId),
       ]);
-      if (!Number(postBatch[0]?.meta?.changes || 0)) return fail('Voucher status changed before posting. Refresh and try again.', 409);
+      if (!Number(postBatch[1]?.meta?.changes || 0)) return fail('Voucher status changed before posting. Refresh and try again.', 409);
       const posted = await env.DB.prepare('SELECT * FROM accounting_vouchers WHERE id = ?').bind(voucherId).first();
       return response({ success: true, voucher: posted });
     }
