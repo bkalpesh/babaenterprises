@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS accounting_vouchers (
          (source_type IS NOT NULL AND source_id IS NOT NULL))
 );
 
+-- Sequential numbers are allocated per voucher type and financial year at posting time.
+-- Draft vouchers retain their temporary DRAFT-* identifier until they are posted.
+CREATE TABLE IF NOT EXISTS accounting_voucher_sequences (
+  financial_year TEXT NOT NULL,
+  voucher_type TEXT NOT NULL CHECK (voucher_type IN (
+    'OPENING', 'SALES', 'PURCHASE', 'RECEIPT', 'PAYMENT',
+    'JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE', 'REVERSAL'
+  )),
+  last_number INTEGER NOT NULL DEFAULT 0 CHECK (last_number >= 0),
+  PRIMARY KEY (financial_year, voucher_type),
+  FOREIGN KEY (financial_year) REFERENCES accounting_periods(id)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounting_voucher_source_unique
   ON accounting_vouchers(source_type, source_id)
   WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
