@@ -373,6 +373,8 @@ export const worker = {
               phone_primary = coalesce(?, phone_primary),
               phone_secondary = coalesce(?, phone_secondary),
               email = coalesce(?, email),
+              website_url = coalesce(?, website_url),
+              operating_hours = coalesce(?, operating_hours),
               bank_name = coalesce(?, bank_name),
               bank_branch = coalesce(?, bank_branch),
               bank_account_no = coalesce(?, bank_account_no),
@@ -382,13 +384,15 @@ export const worker = {
               updated_at = datetime('now')
             WHERE id = 1
           `).bind(
-            b.address_line1 || null,
-            b.address_line2 || null,
-            b.city || null,
-            b.pincode || null,
-            b.phone_primary || null,
-            b.phone_secondary || null,
-            b.email || null,
+            b.address_line1 ?? null,
+            b.address_line2 ?? null,
+            b.city ?? null,
+            b.pincode ?? null,
+            b.phone_primary ?? null,
+            b.phone_secondary ?? null,
+            b.email ?? null,
+            b.website_url ?? null,
+            b.operating_hours ?? null,
             b.bank_name || null,
             b.bank_branch || null,
             b.bank_account_no || null,
@@ -2896,6 +2900,24 @@ export const worker = {
         const issueDate = invoice.invoice_date || indiaDateString();
         if (!isValidInvoiceDate(issueDate)) return errorResponse('Invoice Date is missing or invalid. Edit the Draft and select a valid date before issuing.', 422);
         if (issueDate > indiaDateString()) return errorResponse('Future-dated invoices cannot be issued.', 422);
+        // Snapshot the seller master into the Draft before the immutable issuance transition.
+        const sellerSettings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+        if (!sellerSettings) return errorResponse('Business settings are unavailable; invoice cannot be issued.', 503);
+        await env.DB.prepare(`
+          UPDATE invoices SET
+            seller_gstin = ?, seller_state_code = ?, seller_legal_name = ?, seller_trade_name = ?,
+            seller_address = ?, seller_pan = ?, seller_state_name = ?, seller_address_line1 = ?,
+            seller_address_line2 = ?, seller_city = ?, seller_pincode = ?, seller_phone_primary = ?,
+            seller_phone_secondary = ?, seller_email = ?, seller_website_url = ?, updated_at = datetime('now')
+          WHERE id = ? AND status = 'Draft'
+        `).bind(
+          sellerSettings.gstin, sellerSettings.state_code, sellerSettings.legal_name, sellerSettings.trade_name,
+          [sellerSettings.address_line1, sellerSettings.address_line2, sellerSettings.city, sellerSettings.pincode, sellerSettings.state_name].filter(Boolean).join(', '),
+          sellerSettings.pan, sellerSettings.state_name, sellerSettings.address_line1, sellerSettings.address_line2,
+          sellerSettings.city, sellerSettings.pincode, sellerSettings.phone_primary, sellerSettings.phone_secondary,
+          sellerSettings.email, sellerSettings.website_url, invId
+        ).run();
+
         const fy = getFinancialYear(issueDate);
         const expectedPrefix = getInvoicePrefix(fy);
 
@@ -2979,7 +3001,25 @@ export const worker = {
         const invoice = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first<DBInvoice>();
         if (!invoice) return errorResponse('Invoice not found.', 404);
 
-        const settings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+        const liveSettings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+        if (!liveSettings) return errorResponse('Business settings are unavailable.', 503);
+        const settings: BusinessSettings = invoice.status === 'Draft' ? liveSettings : {
+          ...liveSettings,
+          legal_name: invoice.seller_legal_name || liveSettings.legal_name,
+          trade_name: invoice.seller_trade_name || liveSettings.trade_name,
+          gstin: invoice.seller_gstin || liveSettings.gstin,
+          pan: invoice.seller_pan || liveSettings.pan,
+          state_name: invoice.seller_state_name || liveSettings.state_name,
+          state_code: invoice.seller_state_code || liveSettings.state_code,
+          address_line1: invoice.seller_address_line1 || liveSettings.address_line1,
+          address_line2: invoice.seller_address_line2 || liveSettings.address_line2,
+          city: invoice.seller_city || liveSettings.city,
+          pincode: invoice.seller_pincode || liveSettings.pincode,
+          phone_primary: invoice.seller_phone_primary || liveSettings.phone_primary,
+          phone_secondary: invoice.seller_phone_secondary || liveSettings.phone_secondary,
+          email: invoice.seller_email || liveSettings.email,
+          website_url: invoice.seller_website_url || liveSettings.website_url,
+        };
         const items = await env.DB.prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY line_number ASC')
           .bind(invId)
           .all<DBInvoiceItem>();
