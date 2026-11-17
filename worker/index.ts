@@ -407,7 +407,8 @@ export const worker = {
       // ------------------------------------------------------------------------
       if (url.pathname === '/api/products') {
         if (method === 'GET') {
-          const results = await env.DB.prepare('SELECT * FROM products ORDER BY sort_order ASC, created_at ASC').all<DBProduct>();
+          const isAdmin = await checkAdminAuth(request, env);
+          const results = await env.DB.prepare(isAdmin ? 'SELECT * FROM products ORDER BY sort_order ASC, created_at ASC' : 'SELECT * FROM products WHERE show_on_website = 1 AND is_active = 1 ORDER BY sort_order ASC, created_at ASC').all<DBProduct>();
           return jsonResponse({ success: true, products: results.results });
         }
         if (method === 'POST') {
@@ -418,14 +419,14 @@ export const worker = {
             INSERT INTO products (
               id, name, slug, category, category_label, image_url,
               short_description, full_description, hsn_code, unit_price_paise, gst_rate_bps,
-              applications_json, materials_json, features_json, is_active, sort_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              applications_json, materials_json, features_json, is_active, show_on_website, sort_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             id, p.name, p.slug || id, p.category, p.category_label || p.categoryLabel, p.image_url || p.image || null,
             p.short_description || p.shortDescription, p.full_description || p.fullDescription,
             p.hsn_code || p.hsnCode || null, p.unit_price_paise ?? 0, p.gst_rate_bps ?? null,
             JSON.stringify(p.applications || []), JSON.stringify(p.materialsSupported || p.materials || []),
-            JSON.stringify(p.features || []), p.is_active ?? 1, p.sort_order ?? 0
+            JSON.stringify(p.features || []), p.is_active ?? 1, p.show_on_website ?? 1, p.sort_order ?? 0
           ).run();
           const created = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
           return jsonResponse({ success: true, product: created }, 201);
@@ -445,6 +446,7 @@ export const worker = {
             short_description = coalesce(?, short_description),
             full_description = coalesce(?, full_description),
             is_active = coalesce(?, is_active),
+            show_on_website = coalesce(?, show_on_website),
             updated_at = datetime('now')
           WHERE id = ?
         `).bind(
@@ -455,6 +457,7 @@ export const worker = {
           p.short_description || null,
           p.full_description || null,
           p.is_active !== undefined ? p.is_active : null,
+          p.show_on_website !== undefined ? p.show_on_website : null,
           prodId
         ).run();
         const updated = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(prodId).first();
