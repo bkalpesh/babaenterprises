@@ -221,3 +221,95 @@ BEFORE DELETE ON accounting_audit_logs
 BEGIN
   SELECT RAISE(ABORT, 'Accounting audit logs cannot be deleted');
 END;
+
+
+-- Enforce balanced, in-period posting at the database boundary, not only in the API.
+CREATE TRIGGER IF NOT EXISTS trg_accounting_voucher_validate_post
+BEFORE UPDATE OF status ON accounting_vouchers
+WHEN OLD.status = 'Draft' AND NEW.status = 'Posted'
+BEGIN
+  SELECT CASE
+    WHEN (SELECT COUNT(*) FROM accounting_voucher_lines WHERE voucher_id = NEW.id) < 2
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_MINIMUM_LINES')
+  END;
+  SELECT CASE
+    WHEN (SELECT COALESCE(SUM(debit_paise), 0) FROM accounting_voucher_lines WHERE voucher_id = NEW.id)
+       <= 0
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_ZERO_VALUE')
+  END;
+  SELECT CASE
+    WHEN (SELECT COALESCE(SUM(debit_paise), 0) FROM accounting_voucher_lines WHERE voucher_id = NEW.id)
+       <> (SELECT COALESCE(SUM(credit_paise), 0) FROM accounting_voucher_lines WHERE voucher_id = NEW.id)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_UNBALANCED')
+  END;
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1 FROM accounting_periods p
+      WHERE p.id = NEW.financial_year
+        AND p.status = 'Open'
+        AND date(NEW.voucher_date) BETWEEN date(p.start_date) AND date(p.end_date)
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_PERIOD_INVALID')
+  END;
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_voucher_lines l
+      JOIN ledger_accounts a ON a.id = l.account_id
+      WHERE l.voucher_id = NEW.id
+        AND a.account_code = '1130'
+        AND (l.customer_id IS NULL OR l.supplier_id IS NOT NULL)
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_CUSTOMER_REQUIRED')
+  END;
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_voucher_lines l
+      JOIN ledger_accounts a ON a.id = l.account_id
+      WHERE l.voucher_id = NEW.id
+        AND a.account_code = '2110'
+        AND (l.supplier_id IS NULL OR l.customer_id IS NOT NULL)
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_SUPPLIER_REQUIRED')
+  END;
+END;
+
+-- Prevent attaching the wrong party dimension to a control account.
+CREATE TRIGGER IF NOT EXISTS trg_accounting_line_party_dimension_insert
+BEFORE INSERT ON accounting_voucher_lines
+BEGIN
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) = '1130'
+      AND (NEW.customer_id IS NULL OR NEW.supplier_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_CUSTOMER_REQUIRED')
+  END;
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) = '2110'
+      AND (NEW.supplier_id IS NULL OR NEW.customer_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_SUPPLIER_REQUIRED')
+  END;
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) NOT IN ('1130', '2110')
+      AND (NEW.customer_id IS NOT NULL OR NEW.supplier_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_PARTY_ACCOUNT_MISMATCH')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_accounting_line_party_dimension_update
+BEFORE UPDATE ON accounting_voucher_lines
+BEGIN
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) = '1130'
+      AND (NEW.customer_id IS NULL OR NEW.supplier_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_CUSTOMER_REQUIRED')
+  END;
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) = '2110'
+      AND (NEW.supplier_id IS NULL OR NEW.customer_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_SUPPLIER_REQUIRED')
+  END;
+  SELECT CASE
+    WHEN (SELECT account_code FROM ledger_accounts WHERE id = NEW.account_id) NOT IN ('1130', '2110')
+      AND (NEW.customer_id IS NOT NULL OR NEW.supplier_id IS NOT NULL)
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_PARTY_ACCOUNT_MISMATCH')
+  END;
+END;
