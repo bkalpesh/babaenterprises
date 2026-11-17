@@ -20,11 +20,14 @@ import { ProductDetailModal } from './components/modals/ProductDetailModal';
 import { QuotationModal } from './components/modals/QuotationModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { StorageService } from './services/storageService';
+import { ApiService } from './services/apiService';
 import { Product, CustomerReference, Industry } from './types';
 import { INITIAL_INDUSTRIES } from './data/initialData';
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(() => StorageService.getProducts());
+  // Public catalogue must come from the Worker endpoint, which filters hidden products in D1.
+  // Do not fall back to localStorage: it may contain stale products that an administrator has hidden.
+  const [products, setProducts] = useState<Product[]>([]);
   const [references, setReferences] = useState<CustomerReference[]>(() => StorageService.getReferences());
   const [industries] = useState<Industry[]>(INITIAL_INDUSTRIES);
 
@@ -33,13 +36,28 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [prefilledEnquiryCategory, setPrefilledEnquiryCategory] = useState<string>('');
 
+  // Load the public, server-filtered catalogue. The API request intentionally carries no Admin token.
+  useEffect(() => {
+    let active = true;
+    ApiService.getProducts()
+      .then((publicProducts) => {
+        if (active) setProducts(publicProducts);
+      })
+      .catch((error) => {
+        console.error('Unable to load the public product catalogue:', error);
+        // Fail closed rather than showing stale local products that may have been hidden.
+        if (active) setProducts([]);
+      });
+    return () => { active = false; };
+  }, []);
+
   // Handle URL hash routing (e.g. #products/rubber-washers or #admin)
   useEffect(() => {
     const checkHashRoute = () => {
       const hash = window.location.hash;
       if (hash.startsWith('#products/')) {
         const slug = hash.replace('#products/', '');
-        const target = StorageService.getProductBySlug(slug);
+        const target = products.find((product) => product.slug === slug || product.id === slug);
         if (target) {
           setSelectedProduct(target);
         }
@@ -51,10 +69,17 @@ export default function App() {
     checkHashRoute();
     window.addEventListener('hashchange', checkHashRoute);
     return () => window.removeEventListener('hashchange', checkHashRoute);
-  }, []);
+  }, [products]);
 
-  const handleDataChange = useCallback(() => {
-    setProducts(StorageService.getProducts());
+  const handleDataChange = useCallback(async () => {
+    try {
+      // Refresh the same public-filtered D1 catalogue after Admin changes.
+      const publicProducts = await ApiService.getProducts();
+      setProducts(publicProducts);
+    } catch (error) {
+      console.error('Unable to refresh the public product catalogue:', error);
+      setProducts([]);
+    }
     setReferences(StorageService.getReferences());
   }, []);
 
