@@ -110,6 +110,7 @@ export interface DBProduct {
   materials_json: string;
   features_json: string;
   is_active: number;
+  show_on_website: number;
   sort_order: number;
   created_at: string;
   updated_at: string;
