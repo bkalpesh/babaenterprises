@@ -10,6 +10,8 @@ type VoucherLine = { id: string; line_number: number; account_id: string; accoun
 type VoucherDetail = Voucher & { lines: VoucherLine[] };
 type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; buyer_name: string | null; buyer_trade_name: string | null; taxable_amount_paise: number; cgst_amount_paise: number; sgst_amount_paise: number; igst_amount_paise: number; total_tax_paise: number; round_off_paise: number; total_invoice_amount_paise: number; customer_active: number | null; linked_voucher_id: string | null; linked_voucher_number: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
+type GeneralLedgerEntry = { id: string; line_number: number; description: string | null; debit_paise: number; credit_paise: number; voucher_id: string; voucher_number: string; voucher_type: string; voucher_date: string; narration: string | null; customer_name: string | null; supplier_name: string | null; running_balance_paise: number };
+type GeneralLedgerData = { account: Account; from: string; to: string; opening_balance_paise: number; entries: GeneralLedgerEntry[]; closing_balance_paise: number };
 type Party = { id: string; legal_name: string; trade_name: string | null };
 type CustomerOutstanding = { customer_id: string; legal_name: string; trade_name: string | null; outstanding_paise: number };
 type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
@@ -48,6 +50,12 @@ export const AccountingManagement: React.FC = () => {
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
   const [customerOutstandings, setCustomerOutstandings] = useState<CustomerOutstanding[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
+  const [ledgerAccountId, setLedgerAccountId] = useState('');
+  const [ledgerFromDate, setLedgerFromDate] = useState('2026-04-01');
+  const [ledgerToDate, setLedgerToDate] = useState('2027-03-31');
+  const [generalLedger, setGeneralLedger] = useState<GeneralLedgerData | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError, setLedgerError] = useState('');
   const [receiptDate, setReceiptDate] = useState(() => {
     const now = new Date();
     return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
@@ -57,7 +65,7 @@ export const AccountingManagement: React.FC = () => {
   const [receiptAmount, setReceiptAmount] = useState('');
   const [receiptReference, setReceiptReference] = useState('');
   const [receiptNarration, setReceiptNarration] = useState('');
-  const [tab, setTab] = useState<'overview' | 'accounts' | 'vouchers'>('overview');
+  const [tab, setTab] = useState<'overview' | 'accounts' | 'ledger' | 'vouchers'>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -102,6 +110,45 @@ export const AccountingManagement: React.FC = () => {
   const totalDebit = trialBalance.reduce((sum, row) => sum + Number(row.debit_paise || 0), 0);
   const totalCredit = trialBalance.reduce((sum, row) => sum + Number(row.credit_paise || 0), 0);
   const postedCount = vouchers.filter(v => v.status === 'Posted').length;
+  const selectedPeriod = periods.find(period => period.id === periodId);
+  const formatBalance = (balancePaise: number) => {
+    const amount = money(Math.abs(Number(balancePaise) || 0));
+    return amount + (balancePaise > 0 ? ' Dr' : balancePaise < 0 ? ' Cr' : '');
+  };
+
+  const loadGeneralLedger = useCallback(async () => {
+    if (!ledgerAccountId || !ledgerFromDate || !ledgerToDate) return;
+    setLedgerLoading(true); setLedgerError('');
+    try {
+      const result = await accountingFetch<GeneralLedgerData>(
+        'general-ledger?financial_year=' + encodeURIComponent(periodId) +
+        '&account_id=' + encodeURIComponent(ledgerAccountId) +
+        '&from=' + encodeURIComponent(ledgerFromDate) +
+        '&to=' + encodeURIComponent(ledgerToDate)
+      );
+      setGeneralLedger(result);
+    } catch (e: any) {
+      setGeneralLedger(null);
+      setLedgerError(e.message || 'Unable to load General Ledger statement.');
+    } finally { setLedgerLoading(false); }
+  }, [periodId, ledgerAccountId, ledgerFromDate, ledgerToDate]);
+
+  useEffect(() => {
+    if (accounts.length && !ledgerAccountId) {
+      setLedgerAccountId(accounts.find(account => account.account_code === '1130' && account.is_group === 0)?.id || leafAccounts[0]?.id || '');
+    }
+  }, [accounts, leafAccounts, ledgerAccountId]);
+
+  useEffect(() => {
+    if (selectedPeriod) {
+      setLedgerFromDate(selectedPeriod.start_date);
+      setLedgerToDate(selectedPeriod.end_date);
+    }
+  }, [periodId, selectedPeriod?.start_date, selectedPeriod?.end_date]);
+
+  useEffect(() => {
+    if (tab === 'ledger' && ledgerAccountId && selectedPeriod) loadGeneralLedger();
+  }, [tab, ledgerAccountId, ledgerFromDate, ledgerToDate, selectedPeriod, loadGeneralLedger]);
 
   const createBankLedger = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -242,8 +289,8 @@ export const AccountingManagement: React.FC = () => {
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{notice}</div>}
 
       <div className="flex gap-2 border-b border-slate-200">
-        {(['overview', 'accounts', 'vouchers'] as const).map(item => (
-          <button key={item} type="button" onClick={() => setTab(item)} className={'border-b-2 px-3 py-2 text-xs font-semibold capitalize ' + (tab === item ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-500')}>{item === 'overview' ? 'Trial Balance' : item === 'accounts' ? 'Chart of Accounts' : 'Vouchers'}</button>
+        {(['overview', 'accounts', 'ledger', 'vouchers'] as const).map(item => (
+          <button key={item} type="button" onClick={() => setTab(item)} className={'border-b-2 px-3 py-2 text-xs font-semibold capitalize ' + (tab === item ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-500')}>{item === 'overview' ? 'Trial Balance' : item === 'accounts' ? 'Chart of Accounts' : item === 'ledger' ? 'General Ledger' : 'Vouchers'}</button>
         ))}
       </div>
 
@@ -278,6 +325,67 @@ export const AccountingManagement: React.FC = () => {
             <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Chart of Accounts</h3><p className="text-[11px] text-slate-500">System-seeded accounts and separately maintained bank ledgers. Group accounts cannot receive postings.</p></div>
             <div className="divide-y divide-slate-100">{accounts.map(account => <div key={account.id} className="flex items-center justify-between gap-3 px-4 py-2.5"><div><p className="text-xs font-semibold text-slate-800">{account.account_code} · {account.name}</p><p className="text-[10px] text-slate-500">{account.account_type}{account.is_group ? ' · Group' : ''}{account.is_control_account ? ' · Party control' : ''}</p></div><span className={'text-[10px] ' + (account.is_active ? 'text-emerald-700' : 'text-slate-400')}>{account.is_active ? 'Active' : 'Inactive'}</span></div>)}</div>
             </div>
+          </>}
+
+          {tab === 'ledger' && <>
+            <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">General Ledger Statement</h3>
+                <p className="text-[11px] text-slate-500">Read-only statement of posted transactions. Draft and cancelled vouchers are excluded. FY opening balances are zero.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <label className="text-[11px] font-semibold text-slate-600">Ledger account
+                  <select className={inputClass + ' mt-1'} value={ledgerAccountId} onChange={e => setLedgerAccountId(e.target.value)} required>
+                    <option value="">Select ledger account</option>
+                    {leafAccounts.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-[11px] font-semibold text-slate-600">From date
+                  <input className={inputClass + ' mt-1'} type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={ledgerFromDate} onChange={e => setLedgerFromDate(e.target.value)} required />
+                </label>
+                <label className="text-[11px] font-semibold text-slate-600">To date
+                  <input className={inputClass + ' mt-1'} type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={ledgerToDate} onChange={e => setLedgerToDate(e.target.value)} required />
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <button type="button" onClick={loadGeneralLedger} disabled={ledgerLoading || !ledgerAccountId} className={buttonClass}>{ledgerLoading ? 'Loading…' : 'Refresh Statement'}</button>
+              </div>
+            </section>
+            {ledgerError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{ledgerError}</div>}
+            {ledgerLoading && <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500">Loading General Ledger statement…</div>}
+            {!ledgerLoading && generalLedger && <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Opening balance</p><p className="mt-1 text-sm font-bold text-slate-900">{formatBalance(generalLedger.opening_balance_paise)}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Transactions</p><p className="mt-1 text-sm font-bold text-slate-900">{generalLedger.entries.length}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Closing balance</p><p className="mt-1 text-sm font-bold text-slate-900">{formatBalance(generalLedger.closing_balance_paise)}</p></div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <h4 className="text-sm font-bold text-slate-900">{generalLedger.account.account_code} · {generalLedger.account.name}</h4>
+                  <p className="text-[11px] text-slate-500">{generalLedger.from} to {generalLedger.to} · Posted vouchers only</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left text-xs">
+                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
+                      <th className="px-3 py-2">Date</th><th className="px-3 py-2">Voucher</th><th className="px-3 py-2">Narration / Details</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th><th className="px-3 py-2 text-right">Running balance</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-slate-50/60"><td className="px-3 py-2" colSpan={5}>Opening balance</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatBalance(generalLedger.opening_balance_paise)}</td></tr>
+                      {generalLedger.entries.map(entry => <tr key={entry.id}>
+                        <td className="whitespace-nowrap px-3 py-2">{entry.voucher_date}</td>
+                        <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-800">{entry.voucher_number}<span className="block text-[10px] font-normal text-slate-500">{entry.voucher_type}</span></td>
+                        <td className="px-3 py-2 text-slate-600">{entry.narration || entry.description || '—'}{entry.description && entry.narration && entry.description !== entry.narration ? <span className="block text-[10px] text-slate-400">{entry.description}</span> : null}{entry.customer_name ? <span className="block text-[10px] text-slate-500">Customer: {entry.customer_name}</span> : null}{entry.supplier_name ? <span className="block text-[10px] text-slate-500">Supplier: {entry.supplier_name}</span> : null}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{Number(entry.debit_paise) ? money(entry.debit_paise) : '—'}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{Number(entry.credit_paise) ? money(entry.credit_paise) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatBalance(entry.running_balance_paise)}</td>
+                      </tr>)}
+                      {generalLedger.entries.length === 0 && <tr><td className="px-3 py-5 text-center text-slate-500" colSpan={6}>No posted transactions for this account in the selected date range.</td></tr>}
+                    </tbody>
+                    <tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-3" colSpan={5}>Closing balance</td><td className="px-3 py-3 text-right tabular-nums">{formatBalance(generalLedger.closing_balance_paise)}</td></tr></tfoot>
+                  </table>
+                </div>
+              </div>
+            </>}
           </>}
 
           {tab === 'vouchers' && <>
