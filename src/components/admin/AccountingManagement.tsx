@@ -12,6 +12,9 @@ type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; 
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
 type GeneralLedgerEntry = { id: string; line_number: number; description: string | null; debit_paise: number; credit_paise: number; voucher_id: string; voucher_number: string; voucher_type: string; voucher_date: string; narration: string | null; customer_name: string | null; supplier_name: string | null; running_balance_paise: number };
 type GeneralLedgerData = { account: Account; from: string; to: string; opening_balance_paise: number; entries: GeneralLedgerEntry[]; closing_balance_paise: number };
+type ReportRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number; amount_paise?: number; balance_paise?: number };
+type ProfitLossData = { from: string; to: string; income: ReportRow[]; expenses: ReportRow[]; total_income_paise: number; total_expenses_paise: number; net_profit_paise: number };
+type BalanceSheetData = { as_of: string; assets: ReportRow[]; liabilities: ReportRow[]; equity: ReportRow[]; current_year_profit_paise: number; total_assets_paise: number; total_liabilities_paise: number; total_equity_paise: number; total_liabilities_and_equity_paise: number; difference_paise: number; is_balanced: boolean };
 type Party = { id: string; legal_name: string; trade_name: string | null };
 type CustomerOutstanding = { customer_id: string; legal_name: string; trade_name: string | null; outstanding_paise: number };
 type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
@@ -56,6 +59,15 @@ export const AccountingManagement: React.FC = () => {
   const [generalLedger, setGeneralLedger] = useState<GeneralLedgerData | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
+  const [reportFromDate, setReportFromDate] = useState('2026-04-01');
+  const [reportToDate, setReportToDate] = useState('2027-03-31');
+  const [balanceSheetDate, setBalanceSheetDate] = useState('2027-03-31');
+  const [profitLoss, setProfitLoss] = useState<ProfitLossData | null>(null);
+  const [profitLossLoading, setProfitLossLoading] = useState(false);
+  const [profitLossError, setProfitLossError] = useState('');
+  const [balanceSheet, setBalanceSheet] = useState<BalanceSheetData | null>(null);
+  const [balanceSheetLoading, setBalanceSheetLoading] = useState(false);
+  const [balanceSheetError, setBalanceSheetError] = useState('');
   const [receiptDate, setReceiptDate] = useState(() => {
     const now = new Date();
     return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
@@ -65,7 +77,7 @@ export const AccountingManagement: React.FC = () => {
   const [receiptAmount, setReceiptAmount] = useState('');
   const [receiptReference, setReceiptReference] = useState('');
   const [receiptNarration, setReceiptNarration] = useState('');
-  const [tab, setTab] = useState<'overview' | 'accounts' | 'ledger' | 'vouchers'>('overview');
+  const [tab, setTab] = useState<'overview' | 'accounts' | 'ledger' | 'profit-loss' | 'balance-sheet' | 'vouchers'>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -143,12 +155,54 @@ export const AccountingManagement: React.FC = () => {
     if (selectedPeriod) {
       setLedgerFromDate(selectedPeriod.start_date);
       setLedgerToDate(selectedPeriod.end_date);
+      setReportFromDate(selectedPeriod.start_date);
+      setReportToDate(selectedPeriod.end_date);
+      setBalanceSheetDate(selectedPeriod.end_date);
     }
   }, [periodId, selectedPeriod?.start_date, selectedPeriod?.end_date]);
 
   useEffect(() => {
     if (tab === 'ledger' && ledgerAccountId && selectedPeriod) loadGeneralLedger();
   }, [tab, ledgerAccountId, ledgerFromDate, ledgerToDate, selectedPeriod, loadGeneralLedger]);
+
+  const loadProfitLoss = useCallback(async () => {
+    if (!reportFromDate || !reportToDate) return;
+    setProfitLossLoading(true); setProfitLossError('');
+    try {
+      const result = await accountingFetch<ProfitLossData>(
+        'profit-loss?financial_year=' + encodeURIComponent(periodId) +
+        '&from=' + encodeURIComponent(reportFromDate) +
+        '&to=' + encodeURIComponent(reportToDate)
+      );
+      setProfitLoss(result);
+    } catch (e: any) {
+      setProfitLoss(null);
+      setProfitLossError(e.message || 'Unable to load Profit & Loss report.');
+    } finally { setProfitLossLoading(false); }
+  }, [periodId, reportFromDate, reportToDate]);
+
+  const loadBalanceSheet = useCallback(async () => {
+    if (!balanceSheetDate) return;
+    setBalanceSheetLoading(true); setBalanceSheetError('');
+    try {
+      const result = await accountingFetch<BalanceSheetData>(
+        'balance-sheet?financial_year=' + encodeURIComponent(periodId) +
+        '&as_of=' + encodeURIComponent(balanceSheetDate)
+      );
+      setBalanceSheet(result);
+    } catch (e: any) {
+      setBalanceSheet(null);
+      setBalanceSheetError(e.message || 'Unable to load Balance Sheet.');
+    } finally { setBalanceSheetLoading(false); }
+  }, [periodId, balanceSheetDate]);
+
+  useEffect(() => {
+    if (tab === 'profit-loss' && selectedPeriod) loadProfitLoss();
+  }, [tab, selectedPeriod, loadProfitLoss]);
+
+  useEffect(() => {
+    if (tab === 'balance-sheet' && selectedPeriod) loadBalanceSheet();
+  }, [tab, selectedPeriod, loadBalanceSheet]);
 
   const createBankLedger = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -288,9 +342,9 @@ export const AccountingManagement: React.FC = () => {
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{notice}</div>}
 
-      <div className="flex gap-2 border-b border-slate-200">
-        {(['overview', 'accounts', 'ledger', 'vouchers'] as const).map(item => (
-          <button key={item} type="button" onClick={() => setTab(item)} className={'border-b-2 px-3 py-2 text-xs font-semibold capitalize ' + (tab === item ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-500')}>{item === 'overview' ? 'Trial Balance' : item === 'accounts' ? 'Chart of Accounts' : item === 'ledger' ? 'General Ledger' : 'Vouchers'}</button>
+      <div className="flex flex-wrap gap-2 border-b border-slate-200">
+        {(['overview', 'accounts', 'ledger', 'profit-loss', 'balance-sheet', 'vouchers'] as const).map(item => (
+          <button key={item} type="button" onClick={() => setTab(item)} className={'border-b-2 px-3 py-2 text-xs font-semibold ' + (tab === item ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-500')}>{item === 'overview' ? 'Trial Balance' : item === 'accounts' ? 'Chart of Accounts' : item === 'ledger' ? 'General Ledger' : item === 'profit-loss' ? 'Profit & Loss' : item === 'balance-sheet' ? 'Balance Sheet' : 'Vouchers'}</button>
         ))}
       </div>
 
@@ -311,6 +365,88 @@ export const AccountingManagement: React.FC = () => {
               </table></div>
               {totalDebit !== totalCredit && <p className="border-t border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Trial Balance is not balanced. Do not rely on financial statements until the posted entries are reconciled.</p>}
             </div>
+          </>}
+
+          {tab === 'profit-loss' && <>
+            <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div><h3 className="text-sm font-bold text-slate-900">Profit & Loss Statement</h3><p className="text-[11px] text-slate-500">Income and expenses from posted vouchers only. Draft and cancelled vouchers are excluded.</p></div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-[11px] font-semibold text-slate-600">From date<input className={inputClass + ' mt-1'} type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={reportFromDate} onChange={e => setReportFromDate(e.target.value)} required /></label>
+                <label className="text-[11px] font-semibold text-slate-600">To date<input className={inputClass + ' mt-1'} type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={reportToDate} onChange={e => setReportToDate(e.target.value)} required /></label>
+              </div>
+              <div className="flex justify-end"><button type="button" onClick={loadProfitLoss} disabled={profitLossLoading} className={buttonClass}>{profitLossLoading ? 'Loading…' : 'Refresh Profit & Loss'}</button></div>
+            </section>
+            {profitLossError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{profitLossError}</div>}
+            {profitLossLoading && <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500">Loading Profit & Loss…</div>}
+            {!profitLossLoading && profitLoss && <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Total income</p><p className="mt-1 text-sm font-bold text-slate-900">{money(profitLoss.total_income_paise)}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Total expenses</p><p className="mt-1 text-sm font-bold text-slate-900">{money(profitLoss.total_expenses_paise)}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">{profitLoss.net_profit_paise >= 0 ? 'Net profit' : 'Net loss'}</p><p className="mt-1 text-sm font-bold text-slate-900">{money(Math.abs(profitLoss.net_profit_paise))}</p></div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="border-b border-slate-200 px-4 py-3"><h4 className="text-sm font-bold text-slate-900">Income</h4></div>
+                  <table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] text-slate-500"><tr><th className="px-3 py-2">Ledger</th><th className="px-3 py-2 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">
+                    {profitLoss.income.map(row => <tr key={row.id}><td className="px-3 py-2">{row.account_code} · {row.name}</td><td className="px-3 py-2 text-right tabular-nums">{money(Number(row.amount_paise || 0))}</td></tr>)}
+                    {!profitLoss.income.length && <tr><td colSpan={2} className="px-3 py-4 text-center text-slate-500">No posted income for this period.</td></tr>}
+                  </tbody><tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-2">Total income</td><td className="px-3 py-2 text-right">{money(profitLoss.total_income_paise)}</td></tr></tfoot></table>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="border-b border-slate-200 px-4 py-3"><h4 className="text-sm font-bold text-slate-900">Expenses</h4></div>
+                  <table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] text-slate-500"><tr><th className="px-3 py-2">Ledger</th><th className="px-3 py-2 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">
+                    {profitLoss.expenses.map(row => <tr key={row.id}><td className="px-3 py-2">{row.account_code} · {row.name}</td><td className="px-3 py-2 text-right tabular-nums">{money(Number(row.amount_paise || 0))}</td></tr>)}
+                    {!profitLoss.expenses.length && <tr><td colSpan={2} className="px-3 py-4 text-center text-slate-500">No posted expenses for this period.</td></tr>}
+                  </tbody><tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-2">Total expenses</td><td className="px-3 py-2 text-right">{money(profitLoss.total_expenses_paise)}</td></tr></tfoot></table>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs"><p className="text-slate-500">{profitLoss.from} to {profitLoss.to} · {periodId}</p><p className="mt-1 font-bold text-slate-900">{profitLoss.net_profit_paise >= 0 ? 'Net profit' : 'Net loss'}: {money(Math.abs(profitLoss.net_profit_paise))}</p></div>
+            </>}
+          </>}
+
+          {tab === 'balance-sheet' && <>
+            <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div><h3 className="text-sm font-bold text-slate-900">Balance Sheet</h3><p className="text-[11px] text-slate-500">Assets, liabilities and equity from posted vouchers only. Current-year profit or loss is included in equity.</p></div>
+              <label className="block max-w-xs text-[11px] font-semibold text-slate-600">As at date<input className={inputClass + ' mt-1'} type="date" min={selectedPeriod?.start_date} max={selectedPeriod?.end_date} value={balanceSheetDate} onChange={e => setBalanceSheetDate(e.target.value)} required /></label>
+              <div className="flex justify-end"><button type="button" onClick={loadBalanceSheet} disabled={balanceSheetLoading} className={buttonClass}>{balanceSheetLoading ? 'Loading…' : 'Refresh Balance Sheet'}</button></div>
+            </section>
+            {balanceSheetError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{balanceSheetError}</div>}
+            {balanceSheetLoading && <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500">Loading Balance Sheet…</div>}
+            {!balanceSheetLoading && balanceSheet && <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Total assets</p><p className="mt-1 text-sm font-bold text-slate-900">{money(balanceSheet.total_assets_paise)}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Liabilities</p><p className="mt-1 text-sm font-bold text-slate-900">{money(balanceSheet.total_liabilities_paise)}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-500">Equity including current-year result</p><p className="mt-1 text-sm font-bold text-slate-900">{money(balanceSheet.total_equity_paise)}</p></div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="border-b border-slate-200 px-4 py-3"><h4 className="text-sm font-bold text-slate-900">Assets</h4></div>
+                  <table className="w-full text-left text-xs"><tbody className="divide-y divide-slate-100">
+                    {balanceSheet.assets.map(row => <tr key={row.id}><td className="px-3 py-2">{row.account_code} · {row.name}</td><td className="px-3 py-2 text-right tabular-nums">{money(Number(row.balance_paise || 0))}</td></tr>)}
+                    {!balanceSheet.assets.length && <tr><td colSpan={2} className="px-3 py-4 text-center text-slate-500">No posted asset balances.</td></tr>}
+                  </tbody><tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-2">Total assets</td><td className="px-3 py-2 text-right">{money(balanceSheet.total_assets_paise)}</td></tr></tfoot></table>
+                </div>
+                <div className="space-y-4">
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-4 py-3"><h4 className="text-sm font-bold text-slate-900">Liabilities</h4></div>
+                    <table className="w-full text-left text-xs"><tbody className="divide-y divide-slate-100">
+                      {balanceSheet.liabilities.map(row => <tr key={row.id}><td className="px-3 py-2">{row.account_code} · {row.name}</td><td className="px-3 py-2 text-right tabular-nums">{money(Number(row.balance_paise || 0))}</td></tr>)}
+                      {!balanceSheet.liabilities.length && <tr><td colSpan={2} className="px-3 py-4 text-center text-slate-500">No posted liability balances.</td></tr>}
+                    </tbody><tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-2">Total liabilities</td><td className="px-3 py-2 text-right">{money(balanceSheet.total_liabilities_paise)}</td></tr></tfoot></table>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-4 py-3"><h4 className="text-sm font-bold text-slate-900">Equity</h4></div>
+                    <table className="w-full text-left text-xs"><tbody className="divide-y divide-slate-100">
+                      {balanceSheet.equity.map(row => <tr key={row.id}><td className="px-3 py-2">{row.account_code} · {row.name}</td><td className="px-3 py-2 text-right tabular-nums">{money(Number(row.balance_paise || 0))}</td></tr>)}
+                      <tr><td className="px-3 py-2">Current year profit / (loss)</td><td className="px-3 py-2 text-right tabular-nums">{money(balanceSheet.current_year_profit_paise)}</td></tr>
+                    </tbody><tfoot className="bg-slate-50 font-bold"><tr><td className="px-3 py-2">Total equity</td><td className="px-3 py-2 text-right">{money(balanceSheet.total_equity_paise)}</td></tr></tfoot></table>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] text-slate-500">Balance Sheet as at {balanceSheet.as_of}</p><p className="mt-1 text-sm font-bold text-slate-900">Liabilities + Equity: {money(balanceSheet.total_liabilities_and_equity_paise)}</p></div><span className={'rounded-full px-3 py-1 text-[10px] font-bold ' + (balanceSheet.is_balanced ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>{balanceSheet.is_balanced ? 'Balanced' : 'Difference: ' + money(balanceSheet.difference_paise)}</span></div>
+              </div>
+            </>}
           </>}
 
           {tab === 'accounts' && <>
