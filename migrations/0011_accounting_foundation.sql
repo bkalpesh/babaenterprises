@@ -326,3 +326,42 @@ BEGIN
     THEN RAISE(ABORT, 'ERR_ACCOUNTING_PARTY_ACCOUNT_MISMATCH')
   END;
 END;
+
+-- Posting-time validation also rejects accounts or parties deactivated after draft creation.
+CREATE TRIGGER IF NOT EXISTS trg_accounting_voucher_validate_active_records
+BEFORE UPDATE OF status ON accounting_vouchers
+WHEN OLD.status = 'Draft' AND NEW.status = 'Posted'
+BEGIN
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_voucher_lines l
+      JOIN ledger_accounts a ON a.id = l.account_id
+      WHERE l.voucher_id = NEW.id AND (a.is_active <> 1 OR a.is_group = 1)
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_ACCOUNT_INACTIVE')
+  END;
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_voucher_lines l
+      JOIN customers c ON c.id = l.customer_id
+      WHERE l.voucher_id = NEW.id AND c.is_active <> 1
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_CUSTOMER_INACTIVE')
+  END;
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_voucher_lines l
+      JOIN suppliers s ON s.id = l.supplier_id
+      WHERE l.voucher_id = NEW.id AND s.is_active <> 1
+    )
+    THEN RAISE(ABORT, 'ERR_ACCOUNTING_SUPPLIER_INACTIVE')
+  END;
+END;
+
+-- Cancellation/reversal workflow is deliberately not enabled yet.
+CREATE TRIGGER IF NOT EXISTS trg_accounting_prevent_draft_cancel
+BEFORE UPDATE OF status ON accounting_vouchers
+WHEN OLD.status = 'Draft' AND NEW.status = 'Cancelled'
+BEGIN
+  SELECT RAISE(ABORT, 'Draft vouchers cannot be cancelled until the cancellation workflow is enabled');
+END;
