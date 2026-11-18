@@ -73,6 +73,34 @@ export async function handleAccountingRequest(
       return response({ success: true, accounts: result.results });
     }
 
+    if (path === '/api/accounting/bank-accounts' && method === 'POST') {
+      const body = await request.json() as Record<string, unknown>;
+      const name = text(body.name, 120);
+      if (!name || name.length < 3) return fail('Enter a bank name and account type or nickname.', 422);
+
+      // Allocate a unique numeric child code under Bank Accounts (1120).
+      // The INSERT is a single database statement, so concurrent creations
+      // cannot both reserve the same next code.
+      const id = `acc-bank-${crypto.randomUUID()}`;
+      await env.DB.prepare(`
+        INSERT INTO ledger_accounts (
+          id, account_code, name, parent_account_id, account_type,
+          normal_balance, is_group, is_control_account, system_managed, is_active
+        )
+        SELECT ?, CAST(COALESCE(MAX(CAST(account_code AS INTEGER)), 1120) + 1 AS TEXT),
+          ?, 'acc-1120', 'Asset', 'Debit', 0, 0, 0, 1
+        FROM ledger_accounts
+        WHERE parent_account_id = 'acc-1120'
+          AND account_code GLOB '[0-9]*'
+      `).bind(id, name).run();
+
+      const account = await env.DB.prepare(
+        'SELECT id, account_code, name, parent_account_id, account_type, normal_balance, is_group, is_control_account, system_managed, is_active FROM ledger_accounts WHERE id = ?'
+      ).bind(id).first();
+      if (!account) return fail('Bank ledger could not be created. Confirm the Bank Accounts group exists.', 409);
+      return response({ success: true, account }, 201);
+    }
+
     if (path === '/api/accounting/suppliers' && method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim().toLowerCase();
       const active = url.searchParams.get('active');
