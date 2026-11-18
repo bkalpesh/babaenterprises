@@ -400,6 +400,133 @@ export async function handleAccountingRequest(
       });
     }
 
+    if (path === '/api/accounting/profit-loss' && method === 'GET') {
+      const financialYear = url.searchParams.get('financial_year') || 'FY2026-27';
+      const fromDate = url.searchParams.get('from');
+      const toDate = url.searchParams.get('to');
+      if (!fromDate || !isDate(fromDate) || !toDate || !isDate(toDate)) {
+        return fail('from and to must be valid YYYY-MM-DD dates.', 422);
+      }
+      if (fromDate > toDate) return fail('From date cannot be later than To date.', 422);
+      const period = await env.DB.prepare(
+        'SELECT id, name, start_date, end_date FROM accounting_periods WHERE id = ?'
+      ).bind(financialYear).first<any>();
+      if (!period) return fail('Financial year not found.', 404);
+      if (fromDate < period.start_date || toDate > period.end_date) {
+        return fail('Profit & Loss dates must fall within the selected financial year.', 422);
+      }
+      const result = await env.DB.prepare(`
+        SELECT a.id, a.account_code, a.name, a.account_type,
+          COALESCE(SUM(l.debit_paise), 0) AS debit_paise,
+          COALESCE(SUM(l.credit_paise), 0) AS credit_paise
+        FROM ledger_accounts a
+        JOIN accounting_voucher_lines l ON l.account_id = a.id
+        JOIN accounting_vouchers v ON v.id = l.voucher_id
+        WHERE a.is_group = 0 AND a.is_active = 1
+          AND a.account_type IN ('Income', 'Expense')
+          AND v.financial_year = ? AND v.status = 'Posted'
+          AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
+        GROUP BY a.id, a.account_code, a.name, a.account_type
+        ORDER BY a.account_type, a.account_code
+      `).bind(financialYear, fromDate, toDate).all();
+      const rows = (result.results as any[]).map(row => ({
+        ...row,
+        amount_paise: row.account_type === 'Income'
+          ? Number(row.credit_paise || 0) - Number(row.debit_paise || 0)
+          : Number(row.debit_paise || 0) - Number(row.credit_paise || 0),
+      }));
+      const income = rows.filter(row => row.account_type === 'Income');
+      const expenses = rows.filter(row => row.account_type === 'Expense');
+      const totalIncome = income.reduce((sum, row) => sum + row.amount_paise, 0);
+      const totalExpenses = expenses.reduce((sum, row) => sum + row.amount_paise, 0);
+      return response({
+        success: true,
+        financial_year: financialYear,
+        period,
+        from: fromDate,
+        to: toDate,
+        income,
+        expenses,
+        total_income_paise: totalIncome,
+        total_expenses_paise: totalExpenses,
+        net_profit_paise: totalIncome - totalExpenses,
+        note: 'Read-only Profit & Loss from posted vouchers only. Draft and cancelled vouchers are excluded.',
+      });
+    }
+
+    if (path === '/api/accounting/balance-sheet' && method === 'GET') {
+      const financialYear = url.searchParams.get('financial_year') || 'FY2026-27';
+      const asOf = url.searchParams.get('as_of');
+      if (!asOf || !isDate(asOf)) return fail('as_of must be a valid YYYY-MM-DD date.', 422);
+      const period = await env.DB.prepare(
+        'SELECT id, name, start_date, end_date FROM accounting_periods WHERE id = ?'
+      ).bind(financialYear).first<any>();
+      if (!period) return fail('Financial year not found.', 404);
+      if (asOf < period.start_date || asOf > period.end_date) {
+        return fail('Balance Sheet date must fall within the selected financial year.', 422);
+      }
+      const result = await env.DB.prepare(`
+        SELECT a.id, a.account_code, a.name, a.account_type,
+          COALESCE(SUM(l.debit_paise), 0) AS debit_paise,
+          COALESCE(SUM(l.credit_paise), 0) AS credit_paise
+        FROM ledger_accounts a
+        JOIN accounting_voucher_lines l ON l.account_id = a.id
+        JOIN accounting_vouchers v ON v.id = l.voucher_id
+        WHERE a.is_group = 0 AND a.is_active = 1
+          AND a.account_type IN ('Asset', 'Liability', 'Equity')
+          AND v.financial_year = ? AND v.status = 'Posted'
+          AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
+        GROUP BY a.id, a.account_code, a.name, a.account_type
+        ORDER BY CASE a.account_type WHEN 'Asset' THEN 1 WHEN 'Liability' THEN 2 ELSE 3 END, a.account_code
+      `).bind(financialYear, period.start_date, asOf).all();
+      const rows = (result.results as any[]).map(row => ({
+        ...row,
+        balance_paise: row.account_type === 'Asset'
+          ? Number(row.debit_paise || 0) - Number(row.credit_paise || 0)
+          : Number(row.credit_paise || 0) - Number(row.debit_paise || 0),
+      }));
+      const pnl = await env.DB.prepare(`
+        SELECT a.account_type,
+          COALESCE(SUM(l.debit_paise), 0) AS debit_paise,
+          COALESCE(SUM(l.credit_paise), 0) AS credit_paise
+        FROM ledger_accounts a
+        JOIN accounting_voucher_lines l ON l.account_id = a.id
+        JOIN accounting_vouchers v ON v.id = l.voucher_id
+        WHERE a.is_group = 0 AND a.is_active = 1
+          AND a.account_type IN ('Income', 'Expense')
+          AND v.financial_year = ? AND v.status = 'Posted'
+          AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
+        GROUP BY a.account_type
+      `).bind(financialYear, period.start_date, asOf).all();
+      const incomeRow = (pnl.results as any[]).find(row => row.account_type === 'Income');
+      const expenseRow = (pnl.results as any[]).find(row => row.account_type === 'Expense');
+      const currentYearProfit = Number(incomeRow?.credit_paise || 0) - Number(incomeRow?.debit_paise || 0)
+        - Number(expenseRow?.debit_paise || 0) + Number(expenseRow?.credit_paise || 0);
+      const assets = rows.filter(row => row.account_type === 'Asset');
+      const liabilities = rows.filter(row => row.account_type === 'Liability');
+      const equity = rows.filter(row => row.account_type === 'Equity');
+      const totalAssets = assets.reduce((sum, row) => sum + row.balance_paise, 0);
+      const totalLiabilities = liabilities.reduce((sum, row) => sum + row.balance_paise, 0);
+      const totalEquity = equity.reduce((sum, row) => sum + row.balance_paise, 0) + currentYearProfit;
+      return response({
+        success: true,
+        financial_year: financialYear,
+        period,
+        as_of: asOf,
+        assets,
+        liabilities,
+        equity,
+        current_year_profit_paise: currentYearProfit,
+        total_assets_paise: totalAssets,
+        total_liabilities_paise: totalLiabilities,
+        total_equity_paise: totalEquity,
+        total_liabilities_and_equity_paise: totalLiabilities + totalEquity,
+        difference_paise: totalAssets - totalLiabilities - totalEquity,
+        is_balanced: totalAssets === totalLiabilities + totalEquity,
+        note: 'Read-only Balance Sheet from posted vouchers only. Current-year profit or loss is included in equity; FY opening balances are zero.',
+      });
+    }
+
     if (path === '/api/accounting/trial-balance' && method === 'GET') {
       const period = url.searchParams.get('financial_year') || 'FY2026-27';
       const asOf = url.searchParams.get('as_of');
