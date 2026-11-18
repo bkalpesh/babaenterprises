@@ -48,7 +48,10 @@ export const AccountingManagement: React.FC = () => {
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
   const [customerOutstandings, setCustomerOutstandings] = useState<CustomerOutstanding[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
-  const [receiptDate, setReceiptDate] = useState('2026-04-01');
+  const [receiptDate, setReceiptDate] = useState(() => {
+    const now = new Date();
+    return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+  });
   const [receiptCustomerId, setReceiptCustomerId] = useState('');
   const [receiptAccountId, setReceiptAccountId] = useState('acc-1110');
   const [receiptAmount, setReceiptAmount] = useState('');
@@ -78,7 +81,7 @@ export const AccountingManagement: React.FC = () => {
         accountingFetch<{ accounts: TBRow[] }>('trial-balance?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ customers: Party[]; suppliers: Party[] }>('parties'),
         accountingFetch<{ invoices: SalesInvoice[] }>('sales-invoices?financial_year=' + encodeURIComponent(periodId)),
-        accountingFetch<{ customers: CustomerOutstanding[] }>('customer-outstandings?financial_year=' + encodeURIComponent(periodId)),
+        accountingFetch<{ customers: CustomerOutstanding[] }>('customer-outstandings?financial_year=' + encodeURIComponent(periodId) + '&as_of=' + encodeURIComponent(receiptDate)),
       ]);
       setPeriods(p.periods || []);
       setAccounts(a.accounts || []);
@@ -90,7 +93,7 @@ export const AccountingManagement: React.FC = () => {
       setTrialBalance(tb.accounts || []);
     } catch (e: any) { setError(e.message || 'Unable to load accounting data.'); }
     finally { setLoading(false); }
-  }, [periodId]);
+  }, [periodId, receiptDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -300,7 +303,7 @@ export const AccountingManagement: React.FC = () => {
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 px-4 py-3">
                 <h3 className="text-sm font-bold text-slate-900">Customer Outstanding Balances</h3>
-                <p className="text-[11px] text-slate-500">Posted Sundry Debtors entries only. Draft invoices and draft vouchers do not create collectible balances.</p>
+                <p className="text-[11px] text-slate-500">Posted Sundry Debtors entries up to {receiptDate}. Draft invoices and draft vouchers do not create collectible balances.</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {customerOutstandings.length === 0 ? <p className="p-4 text-xs text-slate-500">No posted customer receivables for this financial year yet. A sales voucher must be posted before a receipt can be recorded.</p> : customerOutstandings.map(customer => (
