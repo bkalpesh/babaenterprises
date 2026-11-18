@@ -40,6 +40,9 @@ function accountingError(error: unknown): string {
   if (raw.includes('ERR_ACCOUNTING_CUSTOMER_REQUIRED')) return 'A customer must be selected for the Sundry Debtors account.';
   if (raw.includes('ERR_ACCOUNTING_SUPPLIER_REQUIRED')) return 'A supplier must be selected for the Sundry Creditors account.';
   if (raw.includes('ERR_ACCOUNTING_PARTY_ACCOUNT_MISMATCH')) return 'Customer or supplier details can only be attached to the corresponding control account.';
+  if (raw.includes('ERR_ACCOUNTING_ACCOUNT_INACTIVE')) return 'Voucher contains an inactive or non-postable ledger account.';
+  if (raw.includes('ERR_ACCOUNTING_CUSTOMER_INACTIVE')) return 'Voucher contains an inactive customer. Select an active customer.';
+  if (raw.includes('ERR_ACCOUNTING_SUPPLIER_INACTIVE')) return 'Voucher contains an inactive supplier. Select an active supplier.';
   if (/UNIQUE constraint failed/i.test(raw)) return 'This voucher number or source reference already exists.';
   if (/FOREIGN KEY constraint failed/i.test(raw)) return 'A selected customer, supplier, account or financial year is invalid.';
   return 'Accounting operation failed. No success has been recorded. Check the selected records and try again.';
