@@ -6,6 +6,7 @@ type Account = {
 };
 type Period = { id: string; name: string; start_date: string; end_date: string; status: string; opening_balance_status: string };
 type Voucher = { id: string; voucher_number: string; voucher_type: string; voucher_date: string; status: string; narration: string | null };
+type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; buyer_name: string | null; buyer_trade_name: string | null; taxable_amount_paise: number; cgst_amount_paise: number; sgst_amount_paise: number; igst_amount_paise: number; total_tax_paise: number; round_off_paise: number; total_invoice_amount_paise: number; customer_active: number | null; linked_voucher_id: string | null; linked_voucher_number: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
 type Party = { id: string; legal_name: string; trade_name: string | null };
 type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
@@ -38,6 +39,7 @@ export const AccountingManagement: React.FC = () => {
   const [customers, setCustomers] = useState<Party[]>([]);
   const [suppliers, setSuppliers] = useState<Party[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
   const [tab, setTab] = useState<'overview' | 'accounts' | 'vouchers'>('overview');
   const [loading, setLoading] = useState(true);
@@ -56,18 +58,20 @@ export const AccountingManagement: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [p, a, v, tb, parties] = await Promise.all([
+      const [p, a, v, tb, parties, si] = await Promise.all([
         accountingFetch<{ periods: Period[] }>('periods'),
         accountingFetch<{ accounts: Account[] }>('accounts'),
         accountingFetch<{ vouchers: Voucher[] }>('vouchers?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ accounts: TBRow[] }>('trial-balance?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ customers: Party[]; suppliers: Party[] }>('parties'),
+        accountingFetch<{ invoices: SalesInvoice[] }>('sales-invoices?financial_year=' + encodeURIComponent(periodId)),
       ]);
       setPeriods(p.periods || []);
       setAccounts(a.accounts || []);
       setCustomers(parties.customers || []);
       setSuppliers(parties.suppliers || []);
       setVouchers(v.vouchers || []);
+      setSalesInvoices(si.invoices || []);
       setTrialBalance(tb.accounts || []);
     } catch (e: any) { setError(e.message || 'Unable to load accounting data.'); }
     finally { setLoading(false); }
@@ -127,6 +131,17 @@ export const AccountingManagement: React.FC = () => {
       await load();
       setTab('vouchers');
     } catch (e: any) { setError(e.message || 'Unable to create voucher.'); }
+    finally { setSaving(false); }
+  };
+
+  const importSalesInvoice = async (invoice: SalesInvoice) => {
+    if (!window.confirm('Create a Draft Sales Voucher for ' + invoice.invoice_number + '? The invoice will not be changed and the voucher will not be posted.')) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const result = await accountingFetch<{ voucher: Voucher }>('sales-invoices/' + encodeURIComponent(invoice.id) + '/import', { method: 'POST' });
+      setNotice('Draft Sales Voucher created: ' + result.voucher.voucher_number + '. Review it before posting.');
+      await load();
+    } catch (e: any) { setError(e.message || 'Unable to import sales invoice.'); }
     finally { setSaving(false); }
   };
 
@@ -199,6 +214,25 @@ export const AccountingManagement: React.FC = () => {
           </>}
 
           {tab === 'vouchers' && <>
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h3 className="text-sm font-bold text-slate-900">Import Issued Sales Invoices</h3>
+                <p className="text-[11px] text-slate-500">Creates a balanced Draft Sales Voucher using invoice totals. Invoices remain unchanged; review and post each voucher separately.</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {salesInvoices.length === 0 ? <p className="p-4 text-xs text-slate-500">No issued invoices are available for this financial year.</p> : salesInvoices.map(invoice => (
+                  <div key={invoice.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-800">{invoice.invoice_number} · {invoice.invoice_date}</p>
+                      <p className="text-[11px] text-slate-500">{invoice.buyer_trade_name || invoice.buyer_name || 'Customer'} · {money(invoice.total_invoice_amount_paise)}</p>
+                      <p className="text-[10px] text-slate-400">Taxable {money(invoice.taxable_amount_paise)} · GST {money(invoice.total_tax_paise)} · Round-off {money(invoice.round_off_paise)}</p>
+                    </div>
+                    {invoice.linked_voucher_id ? <span className="text-[11px] font-semibold text-emerald-700">Imported · {invoice.linked_voucher_number || 'Voucher linked'}</span> :
+                      <button type="button" onClick={() => importSalesInvoice(invoice)} disabled={saving || invoice.customer_active !== 1} className={buttonClass}>{saving ? 'Please wait…' : 'Create Draft Voucher'}</button>}
+                  </div>
+                ))}
+              </div>
+            </section>
             <form onSubmit={createDraft} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <div><h3 className="text-sm font-bold text-slate-900">Create Draft Voucher</h3><p className="text-[11px] text-slate-500">General journal entry only. Enter amounts in rupees; debits and credits must balance exactly.</p></div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
