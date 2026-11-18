@@ -254,6 +254,14 @@ export async function handleAccountingRequest(
         const supplierId = text(line.supplier_id, 100);
         if (account.account_code === '1130' && (!customerId || supplierId)) return fail(`Line ${index + 1}: choose a customer for Sundry Debtors.`, 422);
         if (account.account_code === '2110' && (!supplierId || customerId)) return fail(`Line ${index + 1}: choose a supplier for Sundry Creditors.`, 422);
+        if (customerId) {
+          const customer = await env.DB.prepare('SELECT is_active FROM customers WHERE id = ?').bind(customerId).first<any>();
+          if (!customer || customer.is_active !== 1) return fail(`Line ${index + 1}: selected customer is unavailable or inactive.`, 422);
+        }
+        if (supplierId) {
+          const supplier = await env.DB.prepare('SELECT is_active FROM suppliers WHERE id = ?').bind(supplierId).first<any>();
+          if (!supplier || supplier.is_active !== 1) return fail(`Line ${index + 1}: selected supplier is unavailable or inactive.`, 422);
+        }
         if (!['1130', '2110'].includes(account.account_code) && (customerId || supplierId)) {
           return fail(`Line ${index + 1}: party details are not valid for this account.`, 422);
         }
