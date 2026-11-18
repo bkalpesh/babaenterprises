@@ -41,6 +41,8 @@ export const AccountingManagement: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [newBankName, setNewBankName] = useState('');
+  const [savingBank, setSavingBank] = useState(false);
   const [voucherDate, setVoucherDate] = useState('2026-04-01');
   const [narration, setNarration] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([
@@ -71,6 +73,22 @@ export const AccountingManagement: React.FC = () => {
   const totalDebit = trialBalance.reduce((sum, row) => sum + Number(row.debit_paise || 0), 0);
   const totalCredit = trialBalance.reduce((sum, row) => sum + Number(row.credit_paise || 0), 0);
   const postedCount = vouchers.filter(v => v.status === 'Posted').length;
+
+  const createBankLedger = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newBankName.trim();
+    if (name.length < 3) { setError('Enter a bank name and account type or nickname.'); return; }
+    setSavingBank(true); setError(''); setNotice('');
+    try {
+      const result = await accountingFetch<{ account: Account }>('bank-accounts', {
+        method: 'POST', body: JSON.stringify({ name }),
+      });
+      setNewBankName('');
+      setNotice('Bank ledger created: ' + result.account.account_code + ' — ' + result.account.name);
+      await load();
+    } catch (e: any) { setError(e.message || 'Unable to create bank ledger.'); }
+    finally { setSavingBank(false); }
+  };
 
   const updateLine = (index: number, patch: Partial<DraftLine>) => {
     setLines(current => current.map((line, i) => i === index ? { ...line, ...patch } : line));
@@ -158,8 +176,16 @@ export const AccountingManagement: React.FC = () => {
             </div>
           </>}
 
-          {tab === 'accounts' && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Chart of Accounts</h3><p className="text-[11px] text-slate-500">System-seeded ledger structure. Group accounts cannot receive postings.</p></div>
+          {tab === 'accounts' && <>
+            <form onSubmit={createBankLedger} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+              <div><h3 className="text-sm font-bold text-slate-900">Add Bank Ledger</h3><p className="text-[11px] text-slate-500">Create a separate ledger for each bank account. Use a clear name such as “HDFC Bank — Current Account”. Do not enter account numbers here.</p></div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input className={inputClass} value={newBankName} onChange={e => setNewBankName(e.target.value)} placeholder="Bank name and account type / nickname" maxLength={120} required />
+                <button className={buttonClass} disabled={savingBank}>{savingBank ? 'Creating…' : 'Add Bank Ledger'}</button>
+              </div>
+            </form>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Chart of Accounts</h3><p className="text-[11px] text-slate-500">System-seeded accounts and separately maintained bank ledgers. Group accounts cannot receive postings.</p></div>
             <div className="divide-y divide-slate-100">{accounts.map(account => <div key={account.id} className="flex items-center justify-between gap-3 px-4 py-2.5"><div><p className="text-xs font-semibold text-slate-800">{account.account_code} · {account.name}</p><p className="text-[10px] text-slate-500">{account.account_type}{account.is_group ? ' · Group' : ''}{account.is_control_account ? ' · Party control' : ''}</p></div><span className={'text-[10px] ' + (account.is_active ? 'text-emerald-700' : 'text-slate-400')}>{account.is_active ? 'Active' : 'Inactive'}</span></div>)}</div>
           </div>}
 
