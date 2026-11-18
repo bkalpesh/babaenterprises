@@ -90,16 +90,20 @@ export async function handleAccountingRequest(
       if (!period) return fail('Financial year not found.', 404);
       const result = await env.DB.prepare(`
         SELECT c.id AS customer_id, c.legal_name, c.trade_name,
-          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) AS outstanding_paise
+          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) AS outstanding_paise,
+          COALESCE(SUM(CASE WHEN v.status = 'Draft' AND v.voucher_type = 'RECEIPT' THEN l.credit_paise ELSE 0 END), 0) AS reserved_paise,
+          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN v.status = 'Draft' AND v.voucher_type = 'RECEIPT' THEN l.credit_paise ELSE 0 END), 0) AS available_paise
         FROM customers c
         LEFT JOIN accounting_voucher_lines l
           ON l.customer_id = c.id
           AND l.account_id = (SELECT id FROM ledger_accounts WHERE account_code = '1130')
         LEFT JOIN accounting_vouchers v
-          ON v.id = l.voucher_id AND v.financial_year = ? AND v.status = 'Posted'
+          ON v.id = l.voucher_id AND v.financial_year = ? AND v.status IN ('Posted', 'Draft')
         WHERE c.is_active = 1
         GROUP BY c.id, c.legal_name, c.trade_name
-        HAVING COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) > 0
+        HAVING COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN v.status = 'Draft' AND v.voucher_type = 'RECEIPT' THEN l.credit_paise ELSE 0 END), 0) > 0
         ORDER BY c.legal_name
       `).bind(financialYear).all();
       return response({ success: true, financial_year: financialYear, customers: result.results });
@@ -450,16 +454,20 @@ export async function handleAccountingRequest(
           return fail('Receipt credit must use Sundry Debtors with a selected customer.', 422);
         }
         const outstanding = await env.DB.prepare(`
-          SELECT COALESCE(SUM(l.debit_paise - l.credit_paise), 0) AS amount
+          SELECT
+            COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) AS amount,
+            COALESCE(SUM(CASE WHEN v.status = 'Draft' AND v.voucher_type = 'RECEIPT' THEN l.credit_paise ELSE 0 END), 0) AS reserved
           FROM accounting_voucher_lines l
           JOIN accounting_vouchers v ON v.id = l.voucher_id
           WHERE l.account_id = ? AND l.customer_id = ?
-            AND v.financial_year = ? AND v.status = 'Posted'
+            AND v.financial_year = ? AND v.status IN ('Posted', 'Draft')
         `).bind(creditLine.account_id, creditLine.customer_id, financialYear).first<any>();
         const outstandingPaise = Number(outstanding?.amount || 0);
-        if (outstandingPaise <= 0) return fail('This customer has no posted outstanding balance in the selected financial year. Post the related sales voucher first, if appropriate.', 422);
-        if (debitLine.debit_paise > outstandingPaise) {
-          return fail('Receipt exceeds the customer\'s posted outstanding balance of ' + (outstandingPaise / 100).toFixed(2) + '.', 422);
+        const reservedPaise = Number(outstanding?.reserved || 0);
+        const availablePaise = outstandingPaise - reservedPaise;
+        if (availablePaise <= 0) return fail('This customer has no unreserved posted outstanding balance in the selected financial year. Draft receipts already reserve their amounts.', 422);
+        if (debitLine.debit_paise > availablePaise) {
+          return fail('Receipt exceeds the available customer balance of ' + (availablePaise / 100).toFixed(2) + '.', 422);
         }
       }
 
