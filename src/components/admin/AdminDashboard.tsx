@@ -299,17 +299,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div
-      className="admin-portal-shell fixed inset-0 z-50 flex items-stretch justify-center overflow-hidden bg-black/75 backdrop-blur-xs sm:items-center sm:p-4"
+      className="admin-portal-shell fixed inset-0 z-50 flex items-stretch justify-center overflow-hidden bg-slate-100"
       onClick={onClose}
     >
       <div
-        className="relative flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl sm:h-[92vh] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-2xl"
+        className="admin-portal-window relative flex h-[100dvh] max-h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="flex shrink-0 items-center justify-between gap-2 bg-[#102F59] px-3 py-2.5 text-white sm:px-6 sm:py-3.5">
+        <div className="admin-portal-header flex min-h-[76px] shrink-0 items-center justify-between gap-3 bg-[#102F59] px-4 py-3 text-white sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
-            <div className="bg-white rounded-lg px-2.5 py-1.5 shadow-xs shrink-0 max-w-[180px]">
+            <div className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 shadow-xs max-w-[180px] sm:max-w-[200px]">
               <img
                 src="/assets/aistudio/Baba_Header_b3cf9ca8.png"
                 alt="BABA ENTERPRISES"
@@ -404,13 +404,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         ) : (
-          /* Authenticated Dashboard Tabs */
-          <div className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden bg-slate-50">
+          /* Responsive administration workspace */
+          <div className="admin-portal-workspace min-h-0 min-w-0 flex-1 flex flex-row overflow-hidden bg-slate-50">
             {/* Tab Navigation */}
-            <div className="flex shrink-0 items-center gap-4 overflow-x-auto border-b border-slate-200 bg-white px-3 sm:gap-6 sm:px-6">
+            <div className="admin-portal-nav flex shrink-0 flex-col gap-1 overflow-y-auto border-r border-slate-200 bg-white px-3 py-4 sm:px-4 lg:px-5">
               <button
                 onClick={() => setActiveTab('enquiries')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'enquiries'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -422,7 +422,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('customers')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'customers'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -434,7 +434,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('quotations')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'quotations'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -446,7 +446,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('invoices')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'invoices'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -458,7 +458,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('products')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'products'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -470,7 +470,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('references')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'references'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -482,7 +482,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('accounting')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'accounting' ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${activeTab === 'accounting' ? 'border-[#0755A5] text-[#0755A5]' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
               >
                 <Receipt className="w-4 h-4" />
                 <span>Accounting & Ledger</span>
@@ -490,7 +490,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button
                 onClick={() => setActiveTab('contact')}
-                className={`py-3.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                className={`admin-portal-nav-item min-h-11 w-full rounded-lg px-3 py-3 text-left text-xs font-semibold whitespace-normal transition-colors flex items-center gap-2 ${
                   activeTab === 'contact'
                     ? 'border-[#0755A5] text-[#0755A5]'
                     : 'border-transparent text-slate-600 hover:text-slate-900'
