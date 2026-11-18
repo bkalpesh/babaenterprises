@@ -89,21 +89,30 @@ export async function handleAccountingRequest(
       const name = text(body.name, 120);
       if (!name || name.length < 3) return fail('Enter a bank name and account type or nickname.', 422);
 
-      // Allocate a unique numeric child code under Bank Accounts (1120).
-      // The INSERT is a single database statement, so concurrent creations
-      // cannot both reserve the same next code.
+      // Create the bank ledger and its audit event in one atomic D1 batch.
+      // The single INSERT...SELECT allocates the next child code under 1120.
       const id = `acc-bank-${crypto.randomUUID()}`;
-      await env.DB.prepare(`
-        INSERT INTO ledger_accounts (
-          id, account_code, name, parent_account_id, account_type,
-          normal_balance, is_group, is_control_account, system_managed, is_active
-        )
-        SELECT ?, CAST(COALESCE(MAX(CAST(account_code AS INTEGER)), 1120) + 1 AS TEXT),
-          ?, 'acc-1120', 'Asset', 'Debit', 0, 0, 0, 1
-        FROM ledger_accounts
-        WHERE parent_account_id = 'acc-1120'
-          AND account_code GLOB '[0-9]*'
-      `).bind(id, name).run();
+      const actor = await getActor(request, env);
+      await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO ledger_accounts (
+            id, account_code, name, parent_account_id, account_type,
+            normal_balance, is_group, is_control_account, system_managed, is_active
+          )
+          SELECT ?, CAST(COALESCE(MAX(CAST(account_code AS INTEGER)), 1120) + 1 AS TEXT),
+            ?, 'acc-1120', 'Asset', 'Debit', 0, 0, 0, 1
+          FROM ledger_accounts
+          WHERE parent_account_id = 'acc-1120'
+            AND account_code GLOB '[0-9]*'
+        `).bind(id, name),
+        env.DB.prepare(`
+          INSERT INTO accounting_audit_logs (id, action, actor, details_json)
+          VALUES (?, 'BANK_LEDGER_CREATED', ?, ?)
+        `).bind(
+          `acal-${crypto.randomUUID()}`, actor,
+          JSON.stringify({ account_id: id, account_name: name })
+        ),
+      ]);
 
       const account = await env.DB.prepare(
         'SELECT id, account_code, name, parent_account_id, account_type, normal_balance, is_group, is_control_account, system_managed, is_active FROM ledger_accounts WHERE id = ?'
