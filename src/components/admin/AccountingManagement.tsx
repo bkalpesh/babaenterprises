@@ -7,7 +7,8 @@ type Account = {
 type Period = { id: string; name: string; start_date: string; end_date: string; status: string; opening_balance_status: string };
 type Voucher = { id: string; voucher_number: string; voucher_type: string; voucher_date: string; status: string; narration: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
-type DraftLine = { account_id: string; debit: string; credit: string; description: string };
+type Party = { id: string; legal_name: string; trade_name: string | null };
+type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
 
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0755A5]';
 const buttonClass = 'rounded-lg bg-[#102F59] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0755A5] disabled:cursor-not-allowed disabled:opacity-50';
@@ -34,6 +35,8 @@ export const AccountingManagement: React.FC = () => {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [periodId, setPeriodId] = useState('FY2026-27');
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [customers, setCustomers] = useState<Party[]>([]);
+  const [suppliers, setSuppliers] = useState<Party[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
   const [tab, setTab] = useState<'overview' | 'accounts' | 'vouchers'>('overview');
@@ -46,21 +49,24 @@ export const AccountingManagement: React.FC = () => {
   const [voucherDate, setVoucherDate] = useState('2026-04-01');
   const [narration, setNarration] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([
-    { account_id: '', debit: '', credit: '', description: '' },
-    { account_id: '', debit: '', credit: '', description: '' },
+    { account_id: '', customer_id: '', supplier_id: '', debit: '', credit: '', description: '' },
+    { account_id: '', customer_id: '', supplier_id: '', debit: '', credit: '', description: '' },
   ]);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [p, a, v, tb] = await Promise.all([
+      const [p, a, v, tb, parties] = await Promise.all([
         accountingFetch<{ periods: Period[] }>('periods'),
         accountingFetch<{ accounts: Account[] }>('accounts'),
         accountingFetch<{ vouchers: Voucher[] }>('vouchers?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ accounts: TBRow[] }>('trial-balance?financial_year=' + encodeURIComponent(periodId)),
+        accountingFetch<{ customers: Party[]; suppliers: Party[] }>('parties'),
       ]);
       setPeriods(p.periods || []);
       setAccounts(a.accounts || []);
+      setCustomers(parties.customers || []);
+      setSuppliers(parties.suppliers || []);
       setVouchers(v.vouchers || []);
       setTrialBalance(tb.accounts || []);
     } catch (e: any) { setError(e.message || 'Unable to load accounting data.'); }
@@ -94,7 +100,7 @@ export const AccountingManagement: React.FC = () => {
     setLines(current => current.map((line, i) => i === index ? { ...line, ...patch } : line));
   };
 
-  const addLine = () => setLines(current => current.length >= 20 ? current : [...current, { account_id: '', debit: '', credit: '', description: '' }]);
+  const addLine = () => setLines(current => current.length >= 20 ? current : [...current, { account_id: '', customer_id: '', supplier_id: '', debit: '', credit: '', description: '' }]);
   const removeLine = (index: number) => setLines(current => current.length <= 2 ? current : current.filter((_, i) => i !== index));
 
   const createDraft = async (event: React.FormEvent) => {
@@ -102,6 +108,8 @@ export const AccountingManagement: React.FC = () => {
     try {
       const payloadLines = lines.map(line => ({
         account_id: line.account_id,
+        customer_id: line.customer_id || null,
+        supplier_id: line.supplier_id || null,
         debit_paise: Math.round((Number(line.debit) || 0) * 100),
         credit_paise: Math.round((Number(line.credit) || 0) * 100),
         description: line.description,
@@ -115,7 +123,7 @@ export const AccountingManagement: React.FC = () => {
       });
       setNotice('Draft voucher created: ' + result.voucher.voucher_number);
       setNarration('');
-      setLines([{ account_id: '', debit: '', credit: '', description: '' }, { account_id: '', debit: '', credit: '', description: '' }]);
+      setLines([{ account_id: '', customer_id: '', supplier_id: '', debit: '', credit: '', description: '' }, { account_id: '', customer_id: '', supplier_id: '', debit: '', credit: '', description: '' }]);
       await load();
       setTab('vouchers');
     } catch (e: any) { setError(e.message || 'Unable to create voucher.'); }
@@ -198,7 +206,9 @@ export const AccountingManagement: React.FC = () => {
                 <label className="text-[11px] font-semibold text-slate-600">Narration<input className={inputClass + ' mt-1'} value={narration} onChange={e => setNarration(e.target.value)} placeholder="Purpose / reference" /></label>
               </div>
               <div className="space-y-2">{lines.map((line, index) => <div key={index} className="grid grid-cols-1 items-end gap-2 rounded-lg bg-slate-50 p-2 sm:grid-cols-[minmax(180px,2fr)_1fr_1fr_auto]">
-                <label className="text-[10px] font-semibold text-slate-600">Ledger account<select className={inputClass + ' mt-1'} value={line.account_id} onChange={e => updateLine(index, { account_id: e.target.value })} required><option value="">Select account</option>{leafAccounts.filter(a => !a.is_control_account).map(a => <option key={a.id} value={a.id}>{a.account_code} — {a.name}</option>)}</select></label>
+                <label className="text-[10px] font-semibold text-slate-600">Ledger account<select className={inputClass + ' mt-1'} value={line.account_id} onChange={e => updateLine(index, { account_id: e.target.value, customer_id: '', supplier_id: '' })} required><option value="">Select account</option>{leafAccounts.map(a => <option key={a.id} value={a.id}>{a.account_code} — {a.name}</option>)}</select></label>
+                {accounts.find(a => a.id === line.account_id)?.account_code === '1130' && <label className="text-[10px] font-semibold text-slate-600">Customer<select className={inputClass + ' mt-1'} value={line.customer_id} onChange={e => updateLine(index, { customer_id: e.target.value, supplier_id: '' })} required><option value="">Select customer</option>{customers.map(p => <option key={p.id} value={p.id}>{p.trade_name || p.legal_name}</option>)}</select></label>}
+                {accounts.find(a => a.id === line.account_id)?.account_code === '2110' && <label className="text-[10px] font-semibold text-slate-600">Supplier<select className={inputClass + ' mt-1'} value={line.supplier_id} onChange={e => updateLine(index, { supplier_id: e.target.value, customer_id: '' })} required><option value="">Select supplier</option>{suppliers.map(p => <option key={p.id} value={p.id}>{p.trade_name || p.legal_name}</option>)}</select></label>}
                 <label className="text-[10px] font-semibold text-slate-600">Debit ₹<input className={inputClass + ' mt-1'} type="number" min="0" step="0.01" value={line.debit} onChange={e => updateLine(index, { debit: e.target.value, credit: e.target.value ? '' : line.credit })} /></label>
                 <label className="text-[10px] font-semibold text-slate-600">Credit ₹<input className={inputClass + ' mt-1'} type="number" min="0" step="0.01" value={line.credit} onChange={e => updateLine(index, { credit: e.target.value, debit: e.target.value ? '' : line.debit })} /></label>
                 <button type="button" onClick={() => removeLine(index)} disabled={lines.length <= 2} className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 disabled:opacity-30" aria-label="Remove line">Remove</button>
