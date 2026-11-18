@@ -102,3 +102,87 @@ html[lang="mr"] .font-display {
     touch-action: manipulation;
   }
 }
+
+
+/* Administration portal: full-screen desktop workspace with compact mobile navigation */
+.admin-portal-window {
+  isolation: isolate;
+}
+
+.admin-portal-workspace > .admin-portal-nav {
+  width: 248px;
+  flex: 0 0 248px;
+}
+
+.admin-portal-nav-item {
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  border-bottom-width: 1px;
+  line-height: 1.35;
+}
+
+.admin-portal-nav-item[class*="border-[#0755A5]"] {
+  background: #eff6ff;
+  border-color: #dbeafe;
+  color: #0755a5;
+}
+
+.admin-portal-workspace > :not(.admin-portal-nav) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.admin-portal-workspace > .admin-portal-nav + * {
+  min-height: 0;
+}
+
+@media (max-width: 767px) {
+  .admin-portal-header {
+    min-height: 64px;
+  }
+
+  .admin-portal-header img {
+    max-height: 42px;
+  }
+
+  .admin-portal-workspace {
+    flex-direction: column;
+  }
+
+  .admin-portal-workspace > .admin-portal-nav {
+    width: 100%;
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    max-height: min(36dvh, 230px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px;
+  }
+
+  .admin-portal-nav-item {
+    min-height: 42px;
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+
+  .admin-portal-nav-item svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  .admin-portal-workspace > :not(.admin-portal-nav) {
+    min-height: 0;
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  .admin-portal-workspace > .admin-portal-nav {
+    padding-top: 20px;
+  }
+}
