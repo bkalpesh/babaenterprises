@@ -195,7 +195,7 @@ export async function handleAccountingRequest(
       return response({ success: true, invoices: result.results });
     }
 
-    const importInvoiceMatch = path.match(/^\\/api\\/accounting\\/sales-invoices\\/([^/]+)\\/import$/);
+    const importInvoiceMatch = path.match(/^\/api\/accounting\/sales-invoices\/([^/]+)\/import$/);
     if (importInvoiceMatch && method === 'POST') {
       const invoiceId = decodeURIComponent(importInvoiceMatch[1]);
       const invoice = await env.DB.prepare(`
