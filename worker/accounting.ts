@@ -73,6 +73,14 @@ export async function handleAccountingRequest(
       return response({ success: true, accounts: result.results });
     }
 
+    if (path === '/api/accounting/parties' && method === 'GET') {
+      const [customers, suppliers] = await Promise.all([
+        env.DB.prepare("SELECT id, legal_name, trade_name FROM customers WHERE is_active = 1 ORDER BY legal_name").all(),
+        env.DB.prepare("SELECT id, legal_name, trade_name FROM suppliers WHERE is_active = 1 ORDER BY legal_name").all(),
+      ]);
+      return response({ success: true, customers: customers.results, suppliers: suppliers.results });
+    }
+
     if (path === '/api/accounting/bank-accounts' && method === 'POST') {
       const body = await request.json() as Record<string, unknown>;
       const name = text(body.name, 120);
