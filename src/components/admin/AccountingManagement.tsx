@@ -11,6 +11,7 @@ type VoucherDetail = Voucher & { lines: VoucherLine[] };
 type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; buyer_name: string | null; buyer_trade_name: string | null; taxable_amount_paise: number; cgst_amount_paise: number; sgst_amount_paise: number; igst_amount_paise: number; total_tax_paise: number; round_off_paise: number; total_invoice_amount_paise: number; customer_active: number | null; linked_voucher_id: string | null; linked_voucher_number: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
 type Party = { id: string; legal_name: string; trade_name: string | null };
+type CustomerOutstanding = { customer_id: string; legal_name: string; trade_name: string | null; outstanding_paise: number };
 type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
 
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0755A5]';
@@ -45,7 +46,14 @@ export const AccountingManagement: React.FC = () => {
   const [viewingVoucher, setViewingVoucher] = useState(false);
   const [voucherViewError, setVoucherViewError] = useState('');
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
+  const [customerOutstandings, setCustomerOutstandings] = useState<CustomerOutstanding[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
+  const [receiptDate, setReceiptDate] = useState('2026-04-01');
+  const [receiptCustomerId, setReceiptCustomerId] = useState('');
+  const [receiptAccountId, setReceiptAccountId] = useState('acc-1110');
+  const [receiptAmount, setReceiptAmount] = useState('');
+  const [receiptReference, setReceiptReference] = useState('');
+  const [receiptNarration, setReceiptNarration] = useState('');
   const [tab, setTab] = useState<'overview' | 'accounts' | 'vouchers'>('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,13 +71,14 @@ export const AccountingManagement: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [p, a, v, tb, parties, si] = await Promise.all([
+      const [p, a, v, tb, parties, si, siOut] = await Promise.all([
         accountingFetch<{ periods: Period[] }>('periods'),
         accountingFetch<{ accounts: Account[] }>('accounts'),
         accountingFetch<{ vouchers: Voucher[] }>('vouchers?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ accounts: TBRow[] }>('trial-balance?financial_year=' + encodeURIComponent(periodId)),
         accountingFetch<{ customers: Party[]; suppliers: Party[] }>('parties'),
         accountingFetch<{ invoices: SalesInvoice[] }>('sales-invoices?financial_year=' + encodeURIComponent(periodId)),
+        accountingFetch<{ customers: CustomerOutstanding[] }>('customer-outstandings?financial_year=' + encodeURIComponent(periodId)),
       ]);
       setPeriods(p.periods || []);
       setAccounts(a.accounts || []);
@@ -77,6 +86,7 @@ export const AccountingManagement: React.FC = () => {
       setSuppliers(parties.suppliers || []);
       setVouchers(v.vouchers || []);
       setSalesInvoices(si.invoices || []);
+      setCustomerOutstandings(siOut.customers || []);
       setTrialBalance(tb.accounts || []);
     } catch (e: any) { setError(e.message || 'Unable to load accounting data.'); }
     finally { setLoading(false); }
@@ -85,6 +95,7 @@ export const AccountingManagement: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   const leafAccounts = useMemo(() => accounts.filter(a => a.is_active === 1 && a.is_group === 0), [accounts]);
+  const receiptAccounts = useMemo(() => leafAccounts.filter(a => a.account_code === '1110' || a.parent_account_id === 'acc-1120'), [leafAccounts]);
   const totalDebit = trialBalance.reduce((sum, row) => sum + Number(row.debit_paise || 0), 0);
   const totalCredit = trialBalance.reduce((sum, row) => sum + Number(row.credit_paise || 0), 0);
   const postedCount = vouchers.filter(v => v.status === 'Posted').length;
@@ -136,6 +147,42 @@ export const AccountingManagement: React.FC = () => {
       await load();
       setTab('vouchers');
     } catch (e: any) { setError(e.message || 'Unable to create voucher.'); }
+    finally { setSaving(false); }
+  };
+
+  const createReceiptDraft = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const amountPaise = Math.round((Number(receiptAmount) || 0) * 100);
+    const customer = customerOutstandings.find(item => item.customer_id === receiptCustomerId);
+    const debtor = accounts.find(account => account.account_code === '1130');
+    if (!customer || !debtor || !receiptAccountId || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
+      setError('Select a customer with an outstanding balance, a Cash/Bank ledger, and enter a valid receipt amount.');
+      return;
+    }
+    if (amountPaise > Number(customer.outstanding_paise)) {
+      setError('Receipt cannot exceed the currently posted customer outstanding balance.');
+      return;
+    }
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const reference = receiptReference.trim();
+      const customerName = customer.trade_name || customer.legal_name;
+      const narrationText = receiptNarration.trim() || ('Customer receipt from ' + customerName + (reference ? ' · Ref ' + reference : ''));
+      const result = await accountingFetch<{ voucher: Voucher }>('vouchers', {
+        method: 'POST',
+        body: JSON.stringify({
+          voucher_type: 'RECEIPT', voucher_date: receiptDate, financial_year: periodId, narration: narrationText,
+          lines: [
+            { account_id: receiptAccountId, debit_paise: amountPaise, credit_paise: 0, description: 'Customer receipt' + (reference ? ' · Ref ' + reference : '') },
+            { account_id: debtor.id, customer_id: receiptCustomerId, debit_paise: 0, credit_paise: amountPaise, description: 'Receipt from ' + customerName },
+          ],
+        }),
+      });
+      setNotice('Draft Receipt Voucher created: ' + result.voucher.voucher_number + '. Review it before posting.');
+      setReceiptAmount(''); setReceiptReference(''); setReceiptNarration('');
+      await load();
+      setTab('vouchers');
+    } catch (e: any) { setError(e.message || 'Unable to create receipt voucher.'); }
     finally { setSaving(false); }
   };
 
@@ -206,7 +253,7 @@ export const AccountingManagement: React.FC = () => {
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-[11px] text-slate-500">Trial Balance</p><p className="mt-1 text-lg font-bold text-slate-900">{money(totalDebit)}</p><p className="text-[11px] text-slate-500">Debit total · Credit {money(totalCredit)}</p></div>
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Trial Balance — {periodId}</h3><p className="text-[11px] text-slate-500">Posted vouchers only. Opening balances are not yet entered.</p></div>
+              <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Trial Balance — {periodId}</h3><p className="text-[11px] text-slate-500">Posted vouchers only. Fresh start: opening balances are zero.</p></div>
               <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
                 <thead className="bg-slate-50 text-[11px] text-slate-500"><tr><th className="px-4 py-2">Code</th><th className="px-4 py-2">Ledger Account</th><th className="px-4 py-2 text-right">Debit</th><th className="px-4 py-2 text-right">Credit</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{trialBalance.map(row => <tr key={row.id}><td className="px-4 py-2 font-mono">{row.account_code}</td><td className="px-4 py-2">{row.name}</td><td className="px-4 py-2 text-right tabular-nums">{Number(row.debit_paise) ? money(row.debit_paise) : '—'}</td><td className="px-4 py-2 text-right tabular-nums">{Number(row.credit_paise) ? money(row.credit_paise) : '—'}</td></tr>)}</tbody>
@@ -250,6 +297,33 @@ export const AccountingManagement: React.FC = () => {
                 ))}
               </div>
             </section>
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h3 className="text-sm font-bold text-slate-900">Customer Outstanding Balances</h3>
+                <p className="text-[11px] text-slate-500">Posted Sundry Debtors entries only. Draft invoices and draft vouchers do not create collectible balances.</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {customerOutstandings.length === 0 ? <p className="p-4 text-xs text-slate-500">No posted customer receivables for this financial year yet. A sales voucher must be posted before a receipt can be recorded.</p> : customerOutstandings.map(customer => (
+                  <div key={customer.customer_id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div><p className="text-xs font-semibold text-slate-800">{customer.trade_name || customer.legal_name}</p><p className="text-[10px] text-slate-500">Customer ledger balance · {customer.legal_name}</p></div>
+                    <p className="text-xs font-bold tabular-nums text-slate-900">{money(Number(customer.outstanding_paise))}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <form onSubmit={createReceiptDraft} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div><h3 className="text-sm font-bold text-slate-900">Record Customer Receipt</h3><p className="text-[11px] text-slate-500">Creates a Draft Receipt Voucher: debit Cash/Bank and credit the selected customer. It does not post automatically.</p></div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-[11px] font-semibold text-slate-600">Receipt date<input className={inputClass + ' mt-1'} type="date" min={periods.find(p => p.id === periodId)?.start_date} max={periods.find(p => p.id === periodId)?.end_date} value={receiptDate} onChange={e => setReceiptDate(e.target.value)} required /></label>
+                <label className="text-[11px] font-semibold text-slate-600">Received into<select className={inputClass + ' mt-1'} value={receiptAccountId} onChange={e => setReceiptAccountId(e.target.value)} required><option value="">Select Cash/Bank ledger</option>{receiptAccounts.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.name}</option>)}</select></label>
+                <label className="text-[11px] font-semibold text-slate-600">Customer<select className={inputClass + ' mt-1'} value={receiptCustomerId} onChange={e => setReceiptCustomerId(e.target.value)} required><option value="">Select customer</option>{customerOutstandings.map(customer => <option key={customer.customer_id} value={customer.customer_id}>{customer.trade_name || customer.legal_name} — {money(Number(customer.outstanding_paise))} due</option>)}</select></label>
+                <label className="text-[11px] font-semibold text-slate-600">Amount received (₹)<input className={inputClass + ' mt-1'} type="number" min="0.01" step="0.01" max={customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)?.outstanding_paise ? Number(customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)!.outstanding_paise) / 100 : undefined} value={receiptAmount} onChange={e => setReceiptAmount(e.target.value)} placeholder="0.00" required /></label>
+                <label className="text-[11px] font-semibold text-slate-600">Payment reference (optional)<input className={inputClass + ' mt-1'} value={receiptReference} onChange={e => setReceiptReference(e.target.value)} placeholder="UPI / cheque / transaction reference" maxLength={120} /></label>
+                <label className="text-[11px] font-semibold text-slate-600">Narration (optional)<input className={inputClass + ' mt-1'} value={receiptNarration} onChange={e => setReceiptNarration(e.target.value)} placeholder="Receipt details" maxLength={1000} /></label>
+              </div>
+              <p className="text-[10px] text-slate-500">Receipts are limited to the customer's posted outstanding balance. Advance receipts and invoice-wise allocation are not enabled in this first version.</p>
+              <div className="flex justify-end"><button className={buttonClass} disabled={saving || customerOutstandings.length === 0 || receiptAccounts.length === 0}>{saving ? 'Saving…' : 'Create Draft Receipt'}</button></div>
+            </form>
             <form onSubmit={createDraft} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <div><h3 className="text-sm font-bold text-slate-900">Create Draft Voucher</h3><p className="text-[11px] text-slate-500">General journal entry only. Enter amounts in rupees; debits and credits must balance exactly.</p></div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
