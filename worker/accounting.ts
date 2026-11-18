@@ -171,6 +171,128 @@ export async function handleAccountingRequest(
       return response({ success: true, supplier }, 201);
     }
 
+    if (path === '/api/accounting/sales-invoices' && method === 'GET') {
+      const periodId = url.searchParams.get('financial_year') || 'FY2026-27';
+      const period = await env.DB.prepare(
+        "SELECT id, name, start_date, end_date, status FROM accounting_periods WHERE id = ?"
+      ).bind(periodId).first<any>();
+      if (!period) return fail('Financial year not found.', 404);
+      const invoiceYear = String(periodId).replace(/^FY/, '');
+      const result = await env.DB.prepare(`
+        SELECT i.id, i.invoice_number, i.invoice_date, i.financial_year,
+          i.customer_id, i.buyer_name, i.buyer_trade_name, i.status,
+          i.taxable_amount_paise, i.cgst_amount_paise, i.sgst_amount_paise,
+          i.igst_amount_paise, i.total_tax_paise, i.round_off_paise,
+          i.total_invoice_amount_paise, c.is_active AS customer_active,
+          v.id AS linked_voucher_id, v.voucher_number AS linked_voucher_number
+        FROM invoices i
+        LEFT JOIN customers c ON c.id = i.customer_id
+        LEFT JOIN accounting_vouchers v ON v.source_type = 'INVOICE' AND v.source_id = i.id
+        WHERE i.status = 'Issued' AND i.financial_year = ?
+          AND i.invoice_date >= ? AND i.invoice_date <= ?
+        ORDER BY i.invoice_date DESC, i.invoice_number DESC
+      `).bind(invoiceYear, period.start_date, period.end_date).all();
+      return response({ success: true, invoices: result.results });
+    }
+
+    const importInvoiceMatch = path.match(/^\\/api\\/accounting\\/sales-invoices\\/([^/]+)\\/import$/);
+    if (importInvoiceMatch && method === 'POST') {
+      const invoiceId = decodeURIComponent(importInvoiceMatch[1]);
+      const invoice = await env.DB.prepare(`
+        SELECT i.*, c.is_active AS customer_active
+        FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id
+        WHERE i.id = ?
+      `).bind(invoiceId).first<any>();
+      if (!invoice) return fail('Sales invoice not found.', 404);
+      if (invoice.status !== 'Issued') return fail('Only Issued invoices can be imported.', 409);
+      if (!invoice.customer_id || invoice.customer_active !== 1) return fail('The invoice customer is missing or inactive. Correct the customer record before importing.', 422);
+      if (!isDate(invoice.invoice_date)) return fail('Invoice date is invalid.', 422);
+
+      const period = await env.DB.prepare(`
+        SELECT * FROM accounting_periods
+        WHERE status = 'Open' AND start_date <= ? AND end_date >= ?
+        ORDER BY start_date DESC LIMIT 1
+      `).bind(invoice.invoice_date, invoice.invoice_date).first<any>();
+      if (!period) return fail('No open accounting period covers this invoice date.', 422);
+
+      const taxable = Number(invoice.taxable_amount_paise);
+      const cgst = Number(invoice.cgst_amount_paise);
+      const sgst = Number(invoice.sgst_amount_paise);
+      const igst = Number(invoice.igst_amount_paise);
+      const totalTax = Number(invoice.total_tax_paise);
+      const roundOff = Number(invoice.round_off_paise);
+      const invoiceTotal = Number(invoice.total_invoice_amount_paise);
+      const amounts = [taxable, cgst, sgst, igst, totalTax, roundOff, invoiceTotal];
+      if (!amounts.every(Number.isSafeInteger) || taxable < 0 || cgst < 0 || sgst < 0 || igst < 0 ||
+          totalTax < 0 || invoiceTotal <= 0 || totalTax !== cgst + sgst + igst ||
+          invoiceTotal !== taxable + totalTax + roundOff ||
+          (invoice.is_interstate === 1 ? (cgst !== 0 || sgst !== 0) : igst !== 0)) {
+        return fail('Invoice totals failed accounting validation. No voucher was created.', 422);
+      }
+
+      const existing = await env.DB.prepare(
+        "SELECT id, voucher_number FROM accounting_vouchers WHERE source_type = 'INVOICE' AND source_id = ?"
+      ).bind(invoiceId).first<any>();
+      if (existing) return fail('This invoice has already been imported as voucher ' + existing.voucher_number + '.', 409);
+
+      const requiredCodes = ['1130', '4000', '5600', ...(cgst ? ['2120'] : []), ...(sgst ? ['2130'] : []), ...(igst ? ['2140'] : [])];
+      const ledgerResult = await env.DB.prepare(
+        `SELECT id, account_code, name, is_group, is_active FROM ledger_accounts WHERE account_code IN (${requiredCodes.map(() => '?').join(',')})`
+      ).bind(...requiredCodes).all();
+      const ledgers = new Map((ledgerResult.results as any[]).map(account => [String(account.account_code), account]));
+      for (const code of requiredCodes) {
+        const account = ledgers.get(code);
+        if (!account || account.is_active !== 1 || account.is_group === 1) {
+          return fail('Required ledger account ' + code + ' is missing, inactive or not postable.', 422);
+        }
+      }
+
+      const debtor = ledgers.get('1130');
+      const sales = ledgers.get('4000');
+      const roundLedger = ledgers.get('5600');
+      const voucherLines: Array<{ account_id: string; customer_id: string | null; description: string; debit_paise: number; credit_paise: number }> = [];
+      voucherLines.push({ account_id: debtor.id, customer_id: invoice.customer_id, description: 'Accounts receivable — ' + (invoice.buyer_trade_name || invoice.buyer_name || invoice.invoice_number), debit_paise: invoiceTotal, credit_paise: 0 });
+      if (taxable) voucherLines.push({ account_id: sales.id, customer_id: null, description: 'Sales — ' + invoice.invoice_number, debit_paise: 0, credit_paise: taxable });
+      for (const [code, amount, label] of [['2120', cgst, 'Output CGST'], ['2130', sgst, 'Output SGST'], ['2140', igst, 'Output IGST']] as Array<[string, number, string]>) {
+        if (amount) voucherLines.push({ account_id: ledgers.get(code).id, customer_id: null, description: label + ' — ' + invoice.invoice_number, debit_paise: 0, credit_paise: amount });
+      }
+      if (roundOff < 0) voucherLines.push({ account_id: roundLedger.id, customer_id: null, description: 'Round-off — ' + invoice.invoice_number, debit_paise: Math.abs(roundOff), credit_paise: 0 });
+      if (roundOff > 0) voucherLines.push({ account_id: roundLedger.id, customer_id: null, description: 'Round-off — ' + invoice.invoice_number, debit_paise: 0, credit_paise: roundOff });
+
+      const debitTotal = voucherLines.reduce((sum, line) => sum + line.debit_paise, 0);
+      const creditTotal = voucherLines.reduce((sum, line) => sum + line.credit_paise, 0);
+      if (debitTotal <= 0 || debitTotal !== creditTotal || !Number.isSafeInteger(debitTotal)) {
+        return fail('Generated sales voucher did not balance. No voucher was created.', 422);
+      }
+
+      const id = `vch-${crypto.randomUUID()}`;
+      const voucherNumber = `DRAFT-SALES-${invoice.invoice_date.replace(/-/g, '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const actor = await getActor(request, env);
+      await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO accounting_vouchers (
+            id, voucher_number, voucher_type, voucher_date, financial_year,
+            status, narration, source_type, source_id, created_by
+          ) VALUES (?, ?, 'SALES', ?, ?, 'Draft', ?, 'INVOICE', ?, ?)
+        `).bind(id, voucherNumber, invoice.invoice_date, period.id, 'Imported from issued sales invoice ' + invoice.invoice_number, invoice.id, actor),
+        ...voucherLines.map((line, index) => env.DB.prepare(`
+          INSERT INTO accounting_voucher_lines (
+            id, voucher_id, line_number, account_id, customer_id, supplier_id,
+            description, debit_paise, credit_paise
+          ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        `).bind(`vln-${crypto.randomUUID()}`, id, index + 1, line.account_id, line.customer_id, line.description, line.debit_paise, line.credit_paise)),
+        env.DB.prepare(`
+          INSERT INTO accounting_audit_logs (id, voucher_id, action, actor, details_json)
+          VALUES (?, ?, 'VOUCHER_DRAFT_CREATED', ?, ?)
+        `).bind(`acal-${crypto.randomUUID()}`, id, actor, JSON.stringify({
+          source_type: 'INVOICE', invoice_id: invoice.id, invoice_number: invoice.invoice_number,
+          debit_total_paise: debitTotal, credit_total_paise: creditTotal,
+        })),
+      ]);
+      const voucher = await env.DB.prepare('SELECT * FROM accounting_vouchers WHERE id = ?').bind(id).first();
+      return response({ success: true, voucher, debit_total_paise: debitTotal, credit_total_paise: creditTotal }, 201);
+    }
+
     if (path === '/api/accounting/vouchers' && method === 'GET') {
       const period = url.searchParams.get('financial_year') || 'FY2026-27';
       const status = url.searchParams.get('status');
