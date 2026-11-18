@@ -422,7 +422,7 @@ export async function handleAccountingRequest(
         FROM ledger_accounts a
         JOIN accounting_voucher_lines l ON l.account_id = a.id
         JOIN accounting_vouchers v ON v.id = l.voucher_id
-        WHERE a.is_group = 0 AND a.is_active = 1
+        WHERE a.is_group = 0
           AND a.account_type IN ('Income', 'Expense')
           AND v.financial_year = ? AND v.status = 'Posted'
           AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
@@ -472,7 +472,7 @@ export async function handleAccountingRequest(
         FROM ledger_accounts a
         JOIN accounting_voucher_lines l ON l.account_id = a.id
         JOIN accounting_vouchers v ON v.id = l.voucher_id
-        WHERE a.is_group = 0 AND a.is_active = 1
+        WHERE a.is_group = 0
           AND a.account_type IN ('Asset', 'Liability', 'Equity')
           AND v.financial_year = ? AND v.status = 'Posted'
           AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
@@ -492,7 +492,7 @@ export async function handleAccountingRequest(
         FROM ledger_accounts a
         JOIN accounting_voucher_lines l ON l.account_id = a.id
         JOIN accounting_vouchers v ON v.id = l.voucher_id
-        WHERE a.is_group = 0 AND a.is_active = 1
+        WHERE a.is_group = 0
           AND a.account_type IN ('Income', 'Expense')
           AND v.financial_year = ? AND v.status = 'Posted'
           AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
