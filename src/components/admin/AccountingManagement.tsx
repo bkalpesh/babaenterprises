@@ -6,6 +6,8 @@ type Account = {
 };
 type Period = { id: string; name: string; start_date: string; end_date: string; status: string; opening_balance_status: string };
 type Voucher = { id: string; voucher_number: string; voucher_type: string; voucher_date: string; status: string; narration: string | null };
+type VoucherLine = { id: string; line_number: number; account_id: string; account_code: string; account_name: string; customer_id: string | null; supplier_id: string | null; description: string | null; debit_paise: number; credit_paise: number };
+type VoucherDetail = Voucher & { lines: VoucherLine[] };
 type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; buyer_name: string | null; buyer_trade_name: string | null; taxable_amount_paise: number; cgst_amount_paise: number; sgst_amount_paise: number; igst_amount_paise: number; total_tax_paise: number; round_off_paise: number; total_invoice_amount_paise: number; customer_active: number | null; linked_voucher_id: string | null; linked_voucher_number: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
 type Party = { id: string; legal_name: string; trade_name: string | null };
@@ -39,6 +41,9 @@ export const AccountingManagement: React.FC = () => {
   const [customers, setCustomers] = useState<Party[]>([]);
   const [suppliers, setSuppliers] = useState<Party[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [selectedVoucher, setSelectedVoucher] = useState<VoucherDetail | null>(null);
+  const [viewingVoucher, setViewingVoucher] = useState(false);
+  const [voucherViewError, setVoucherViewError] = useState('');
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
   const [trialBalance, setTrialBalance] = useState<TBRow[]>([]);
   const [tab, setTab] = useState<'overview' | 'accounts' | 'vouchers'>('overview');
@@ -143,6 +148,18 @@ export const AccountingManagement: React.FC = () => {
       await load();
     } catch (e: any) { setError(e.message || 'Unable to import sales invoice.'); }
     finally { setSaving(false); }
+  };
+
+  const viewVoucher = async (id: string) => {
+    setViewingVoucher(true); setVoucherViewError(''); setSelectedVoucher(null);
+    try {
+      const result = await accountingFetch<{ voucher: Voucher; lines: VoucherLine[] }>('vouchers/' + encodeURIComponent(id));
+      setSelectedVoucher({ ...result.voucher, lines: result.lines || [] });
+    } catch (e: any) {
+      setVoucherViewError(e.message || 'Unable to load voucher details.');
+    } finally {
+      setViewingVoucher(false);
+    }
   };
 
   const postVoucher = async (id: string) => {
@@ -252,11 +269,39 @@ export const AccountingManagement: React.FC = () => {
             </form>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Voucher Register</h3></div>
-              <div className="divide-y divide-slate-100">{vouchers.length === 0 ? <p className="p-5 text-xs text-slate-500">No vouchers recorded for this financial year.</p> : vouchers.map(v => <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div><p className="text-xs font-semibold text-slate-800">{v.voucher_number}</p><p className="text-[11px] text-slate-500">{v.voucher_type} · {v.voucher_date}{v.narration ? ' · ' + v.narration : ''}</p></div><div className="flex items-center gap-2"><span className={'rounded-full px-2 py-1 text-[10px] font-semibold ' + (v.status === 'Posted' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>{v.status}</span>{v.status === 'Draft' && <button type="button" onClick={() => postVoucher(v.id)} disabled={saving} className="rounded-lg border border-[#0755A5] px-3 py-1.5 text-[11px] font-semibold text-[#0755A5]">Post</button>}</div></div>)}</div>
+              <div className="divide-y divide-slate-100">{vouchers.length === 0 ? <p className="p-5 text-xs text-slate-500">No vouchers recorded for this financial year.</p> : vouchers.map(v => <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div><p className="text-xs font-semibold text-slate-800">{v.voucher_number}</p><p className="text-[11px] text-slate-500">{v.voucher_type} · {v.voucher_date}{v.narration ? ' · ' + v.narration : ''}</p></div><div className="flex items-center gap-2"><span className={'rounded-full px-2 py-1 text-[10px] font-semibold ' + (v.status === 'Posted' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>{v.status}</span><button type="button" onClick={() => viewVoucher(v.id)} disabled={viewingVoucher} className="rounded-lg border border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-700 disabled:opacity-50">{viewingVoucher ? 'Loading…' : 'View'}</button>{v.status === 'Draft' && <button type="button" onClick={() => postVoucher(v.id)} disabled={saving} className="rounded-lg border border-[#0755A5] px-3 py-1.5 text-[11px] font-semibold text-[#0755A5]">Post</button>}</div></div>)}</div>
             </div>
           </>}
         </>
       )}
+      {(viewingVoucher || selectedVoucher || voucherViewError) && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Voucher details">
+        <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+            <div><h3 className="text-base font-bold text-slate-900">Voucher Review</h3><p className="mt-1 text-xs text-slate-500">Review the accounting entries. Viewing does not post or change the voucher.</p></div>
+            <button type="button" onClick={() => { setSelectedVoucher(null); setVoucherViewError(''); }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Close</button>
+          </div>
+          <div className="p-5">
+            {viewingVoucher && <p className="text-sm text-slate-500">Loading voucher details…</p>}
+            {voucherViewError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{voucherViewError}</p>}
+            {selectedVoucher && <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div><p className="text-[10px] font-semibold uppercase text-slate-500">Voucher number</p><p className="mt-1 text-sm font-semibold text-slate-900">{selectedVoucher.voucher_number}</p></div>
+                <div><p className="text-[10px] font-semibold uppercase text-slate-500">Date</p><p className="mt-1 text-sm text-slate-900">{selectedVoucher.voucher_date}</p></div>
+                <div><p className="text-[10px] font-semibold uppercase text-slate-500">Status</p><p className="mt-1 text-sm font-semibold text-slate-900">{selectedVoucher.status}</p></div>
+                <div className="sm:col-span-3"><p className="text-[10px] font-semibold uppercase text-slate-500">Narration</p><p className="mt-1 text-sm text-slate-900">{selectedVoucher.narration || '—'}</p></div>
+              </div>
+              <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Ledger account</th><th className="px-3 py-2">Description</th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{selectedVoucher.lines.map(line => <tr key={line.id}><td className="px-3 py-2 font-medium text-slate-800">{line.account_code} · {line.account_name}</td><td className="px-3 py-2 text-slate-600">{line.description || '—'}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.debit_paise)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.credit_paise)}</td></tr>)}</tbody>
+                  <tfoot className="bg-slate-50 font-bold text-slate-900"><tr><td className="px-3 py-2" colSpan={2}>Total</td><td className="px-3 py-2 text-right tabular-nums">{money(selectedVoucher.lines.reduce((sum, line) => sum + Number(line.debit_paise || 0), 0))}</td><td className="px-3 py-2 text-right tabular-nums">{money(selectedVoucher.lines.reduce((sum, line) => sum + Number(line.credit_paise || 0), 0))}</td></tr></tfoot>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">This is a read-only review. The voucher remains {selectedVoucher.status} until separately posted.</p>
+            </>}
+          </div>
+        </div>
+      </div>}
     </div>
   );
 };
