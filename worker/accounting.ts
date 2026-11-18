@@ -84,6 +84,27 @@ export async function handleAccountingRequest(
       return response({ success: true, customers: customers.results, suppliers: suppliers.results });
     }
 
+    if (path === '/api/accounting/customer-outstandings' && method === 'GET') {
+      const financialYear = url.searchParams.get('financial_year') || 'FY2026-27';
+      const period = await env.DB.prepare("SELECT id FROM accounting_periods WHERE id = ?").bind(financialYear).first<any>();
+      if (!period) return fail('Financial year not found.', 404);
+      const result = await env.DB.prepare(`
+        SELECT c.id AS customer_id, c.legal_name, c.trade_name,
+          COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) AS outstanding_paise
+        FROM customers c
+        LEFT JOIN accounting_voucher_lines l
+          ON l.customer_id = c.id
+          AND l.account_id = (SELECT id FROM ledger_accounts WHERE account_code = '1130')
+        LEFT JOIN accounting_vouchers v
+          ON v.id = l.voucher_id AND v.financial_year = ? AND v.status = 'Posted'
+        WHERE c.is_active = 1
+        GROUP BY c.id, c.legal_name, c.trade_name
+        HAVING COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) > 0
+        ORDER BY c.legal_name
+      `).bind(financialYear).all();
+      return response({ success: true, financial_year: financialYear, customers: result.results });
+    }
+
     if (path === '/api/accounting/bank-accounts' && method === 'POST') {
       const body = await request.json() as Record<string, unknown>;
       const name = text(body.name, 120);
@@ -344,14 +365,15 @@ export async function handleAccountingRequest(
         total_debit_paise: totalDebit,
         total_credit_paise: totalCredit,
         is_balanced: totalDebit === totalCredit,
-        note: 'Net posted account balances only. Opening balances must be entered and reconciled before relying on financial statements.',
+        note: 'Net posted account balances only. This financial year starts with zero opening balances.',
       });
     }
 
     if (path === '/api/accounting/vouchers' && method === 'POST') {
       const body = await request.json() as Record<string, any>;
-      // Only generic Journal vouchers are enabled until dedicated workflows are implemented.
-      const types = ['JOURNAL'];
+      // Journal and customer Receipt drafts are enabled. Receipts use a strict
+      // Cash/Bank debit and Sundry Debtors credit structure.
+      const types = ['JOURNAL', 'RECEIPT'];
       const voucherType = text(body.voucher_type, 30);
       const voucherDate = body.voucher_date;
       const financialYear = text(body.financial_year, 30) || 'FY2026-27';
@@ -379,7 +401,7 @@ export async function handleAccountingRequest(
           return fail(`Line ${index + 1}: select an account and enter a positive debit or credit amount (not both).`, 422);
         }
         const account = await env.DB.prepare(
-          'SELECT account_code, is_group, is_active FROM ledger_accounts WHERE id = ?'
+          'SELECT account_code, parent_account_id, is_group, is_active FROM ledger_accounts WHERE id = ?'
         ).bind(accountId).first<any>();
         if (!account || account.is_active !== 1 || account.is_group === 1) {
           return fail(`Line ${index + 1}: selected account is unavailable or is a group account.`, 422);
@@ -408,6 +430,38 @@ export async function handleAccountingRequest(
         });
       }
       if (debitTotal <= 0 || debitTotal !== creditTotal) return fail('Voucher is not balanced. Total debit and total credit must be equal and greater than zero.', 422);
+
+      if (voucherType === 'RECEIPT') {
+        if (normalized.length !== 2) return fail('A customer receipt must contain exactly two lines: Cash/Bank debit and Sundry Debtors credit.', 422);
+        const debitLine = normalized.find(line => line.debit_paise > 0);
+        const creditLine = normalized.find(line => line.credit_paise > 0);
+        if (!debitLine || !creditLine || debitLine.debit_paise !== creditLine.credit_paise) {
+          return fail('A customer receipt must have equal Cash/Bank debit and customer credit amounts.', 422);
+        }
+        const [cashBank, debtorAccount] = await Promise.all([
+          env.DB.prepare('SELECT account_code, parent_account_id, is_active, is_group FROM ledger_accounts WHERE id = ?').bind(debitLine.account_id).first<any>(),
+          env.DB.prepare('SELECT account_code FROM ledger_accounts WHERE id = ?').bind(creditLine.account_id).first<any>(),
+        ]);
+        if (!cashBank || cashBank.is_active !== 1 || cashBank.is_group === 1 ||
+            !(cashBank.account_code === '1110' || cashBank.parent_account_id === 'acc-1120')) {
+          return fail('Receipt debit must use Cash in Hand or an active Bank ledger.', 422);
+        }
+        if (!debtorAccount || debtorAccount.account_code !== '1130' || !creditLine.customer_id) {
+          return fail('Receipt credit must use Sundry Debtors with a selected customer.', 422);
+        }
+        const outstanding = await env.DB.prepare(`
+          SELECT COALESCE(SUM(l.debit_paise - l.credit_paise), 0) AS amount
+          FROM accounting_voucher_lines l
+          JOIN accounting_vouchers v ON v.id = l.voucher_id
+          WHERE l.account_id = ? AND l.customer_id = ?
+            AND v.financial_year = ? AND v.status = 'Posted'
+        `).bind(creditLine.account_id, creditLine.customer_id, financialYear).first<any>();
+        const outstandingPaise = Number(outstanding?.amount || 0);
+        if (outstandingPaise <= 0) return fail('This customer has no posted outstanding balance in the selected financial year. Post the related sales voucher first, if appropriate.', 422);
+        if (debitLine.debit_paise > outstandingPaise) {
+          return fail('Receipt exceeds the customer\'s posted outstanding balance of ' + (outstandingPaise / 100).toFixed(2) + '.', 422);
+        }
+      }
 
       const id = `vch-${crypto.randomUUID()}`;
       const voucherNumber = `DRAFT-${voucherType}-${voucherDate.replace(/-/g, '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
