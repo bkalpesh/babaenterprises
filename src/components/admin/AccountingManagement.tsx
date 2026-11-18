@@ -11,7 +11,7 @@ type VoucherDetail = Voucher & { lines: VoucherLine[] };
 type SalesInvoice = { id: string; invoice_number: string; invoice_date: string; buyer_name: string | null; buyer_trade_name: string | null; taxable_amount_paise: number; cgst_amount_paise: number; sgst_amount_paise: number; igst_amount_paise: number; total_tax_paise: number; round_off_paise: number; total_invoice_amount_paise: number; customer_active: number | null; linked_voucher_id: string | null; linked_voucher_number: string | null };
 type TBRow = { id: string; account_code: string; name: string; account_type: string; debit_paise: number; credit_paise: number };
 type Party = { id: string; legal_name: string; trade_name: string | null };
-type CustomerOutstanding = { customer_id: string; legal_name: string; trade_name: string | null; outstanding_paise: number; reserved_paise: number; available_paise: number };
+type CustomerOutstanding = { customer_id: string; legal_name: string; trade_name: string | null; outstanding_paise: number };
 type DraftLine = { account_id: string; customer_id: string; supplier_id: string; debit: string; credit: string; description: string };
 
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0755A5]';
@@ -159,7 +159,7 @@ export const AccountingManagement: React.FC = () => {
       setError('Select a customer with an outstanding balance, a Cash/Bank ledger, and enter a valid receipt amount.');
       return;
     }
-    if (amountPaise > Number(customer.available_paise)) {
+    if (amountPaise > Number(customer.outstanding_paise)) {
       setError('Receipt cannot exceed the currently posted customer outstanding balance.');
       return;
     }
@@ -259,7 +259,7 @@ export const AccountingManagement: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">{trialBalance.map(row => <tr key={row.id}><td className="px-4 py-2 font-mono">{row.account_code}</td><td className="px-4 py-2">{row.name}</td><td className="px-4 py-2 text-right tabular-nums">{Number(row.debit_paise) ? money(row.debit_paise) : '—'}</td><td className="px-4 py-2 text-right tabular-nums">{Number(row.credit_paise) ? money(row.credit_paise) : '—'}</td></tr>)}</tbody>
                 <tfoot className="bg-slate-50 font-bold"><tr><td colSpan={2} className="px-4 py-3">Total</td><td className="px-4 py-3 text-right">{money(totalDebit)}</td><td className="px-4 py-3 text-right">{money(totalCredit)}</td></tr></tfoot>
               </table></div>
-              {totalDebit !== totalCredit && <p className="border-t border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Trial Balance is not balanced. Do not rely on financial statements until opening balances and postings are reconciled.</p>}
+              {totalDebit !== totalCredit && <p className="border-t border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Trial Balance is not balanced. Do not rely on financial statements until the posted entries are reconciled.</p>}
             </div>
           </>}
 
@@ -305,8 +305,8 @@ export const AccountingManagement: React.FC = () => {
               <div className="divide-y divide-slate-100">
                 {customerOutstandings.length === 0 ? <p className="p-4 text-xs text-slate-500">No posted customer receivables for this financial year yet. A sales voucher must be posted before a receipt can be recorded.</p> : customerOutstandings.map(customer => (
                   <div key={customer.customer_id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div><p className="text-xs font-semibold text-slate-800">{customer.trade_name || customer.legal_name}</p><p className="text-[10px] text-slate-500">Posted due {money(Number(customer.outstanding_paise))} · Draft receipts reserved {money(Number(customer.reserved_paise))}</p></div>
-                    <p className="text-xs font-bold tabular-nums text-slate-900">Available {money(Number(customer.available_paise))}</p>
+                    <div><p className="text-xs font-semibold text-slate-800">{customer.trade_name || customer.legal_name}</p><p className="text-[10px] text-slate-500">Customer ledger balance · {customer.legal_name}</p></div>
+                    <p className="text-xs font-bold tabular-nums text-slate-900">{money(Number(customer.outstanding_paise))}</p>
                   </div>
                 ))}
               </div>
@@ -316,12 +316,12 @@ export const AccountingManagement: React.FC = () => {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-[11px] font-semibold text-slate-600">Receipt date<input className={inputClass + ' mt-1'} type="date" min={periods.find(p => p.id === periodId)?.start_date} max={periods.find(p => p.id === periodId)?.end_date} value={receiptDate} onChange={e => setReceiptDate(e.target.value)} required /></label>
                 <label className="text-[11px] font-semibold text-slate-600">Received into<select className={inputClass + ' mt-1'} value={receiptAccountId} onChange={e => setReceiptAccountId(e.target.value)} required><option value="">Select Cash/Bank ledger</option>{receiptAccounts.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.name}</option>)}</select></label>
-                <label className="text-[11px] font-semibold text-slate-600">Customer<select className={inputClass + ' mt-1'} value={receiptCustomerId} onChange={e => setReceiptCustomerId(e.target.value)} required><option value="">Select customer</option>{customerOutstandings.map(customer => <option key={customer.customer_id} value={customer.customer_id}>{customer.trade_name || customer.legal_name} — {money(Number(customer.available_paise))} available</option>)}</select></label>
-                <label className="text-[11px] font-semibold text-slate-600">Amount received (₹)<input className={inputClass + ' mt-1'} type="number" min="0.01" step="0.01" max={customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)?.available_paise ? Number(customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)!.available_paise) / 100 : undefined} value={receiptAmount} onChange={e => setReceiptAmount(e.target.value)} placeholder="0.00" required /></label>
+                <label className="text-[11px] font-semibold text-slate-600">Customer<select className={inputClass + ' mt-1'} value={receiptCustomerId} onChange={e => setReceiptCustomerId(e.target.value)} required><option value="">Select customer</option>{customerOutstandings.map(customer => <option key={customer.customer_id} value={customer.customer_id}>{customer.trade_name || customer.legal_name} — {money(Number(customer.outstanding_paise))} due</option>)}</select></label>
+                <label className="text-[11px] font-semibold text-slate-600">Amount received (₹)<input className={inputClass + ' mt-1'} type="number" min="0.01" step="0.01" max={customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)?.outstanding_paise ? Number(customerOutstandings.find(customer => customer.customer_id === receiptCustomerId)!.outstanding_paise) / 100 : undefined} value={receiptAmount} onChange={e => setReceiptAmount(e.target.value)} placeholder="0.00" required /></label>
                 <label className="text-[11px] font-semibold text-slate-600">Payment reference (optional)<input className={inputClass + ' mt-1'} value={receiptReference} onChange={e => setReceiptReference(e.target.value)} placeholder="UPI / cheque / transaction reference" maxLength={120} /></label>
                 <label className="text-[11px] font-semibold text-slate-600">Narration (optional)<input className={inputClass + ' mt-1'} value={receiptNarration} onChange={e => setReceiptNarration(e.target.value)} placeholder="Receipt details" maxLength={1000} /></label>
               </div>
-              <p className="text-[10px] text-slate-500">Receipts are limited to the unreserved posted customer balance. Draft receipts reserve their amount until posted. Advance receipts and invoice-wise allocation are not enabled in this first version.</p>
+              <p className="text-[10px] text-slate-500">Receipts are limited to the currently posted customer balance. The balance is checked again when a receipt is posted. Advance receipts and invoice-wise allocation are not enabled in this first version.</p>
               <div className="flex justify-end"><button className={buttonClass} disabled={saving || customerOutstandings.length === 0 || receiptAccounts.length === 0}>{saving ? 'Saving…' : 'Create Draft Receipt'}</button></div>
             </form>
             <form onSubmit={createDraft} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
