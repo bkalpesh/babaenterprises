@@ -86,6 +86,8 @@ export async function handleAccountingRequest(
 
     if (path === '/api/accounting/customer-outstandings' && method === 'GET') {
       const financialYear = url.searchParams.get('financial_year') || 'FY2026-27';
+      const asOf = url.searchParams.get('as_of');
+      if (asOf && !isDate(asOf)) return fail('as_of must be a valid YYYY-MM-DD date.', 422);
       const period = await env.DB.prepare("SELECT id FROM accounting_periods WHERE id = ?").bind(financialYear).first<any>();
       if (!period) return fail('Financial year not found.', 404);
       const result = await env.DB.prepare(`
@@ -97,12 +99,13 @@ export async function handleAccountingRequest(
           AND l.account_id = (SELECT id FROM ledger_accounts WHERE account_code = '1130')
         LEFT JOIN accounting_vouchers v
           ON v.id = l.voucher_id AND v.financial_year = ? AND v.status = 'Posted'
+          AND (? IS NULL OR date(v.voucher_date) <= date(?))
         WHERE c.is_active = 1
         GROUP BY c.id, c.legal_name, c.trade_name
         HAVING COALESCE(SUM(CASE WHEN v.status = 'Posted' THEN l.debit_paise - l.credit_paise ELSE 0 END), 0) > 0
         ORDER BY c.legal_name
-      `).bind(financialYear).all();
-      return response({ success: true, financial_year: financialYear, customers: result.results });
+      `).bind(financialYear, asOf || null, asOf || null).all();
+      return response({ success: true, financial_year: financialYear, as_of: asOf || null, customers: result.results });
     }
 
     if (path === '/api/accounting/bank-accounts' && method === 'POST') {
@@ -455,7 +458,8 @@ export async function handleAccountingRequest(
           JOIN accounting_vouchers v ON v.id = l.voucher_id
           WHERE l.account_id = ? AND l.customer_id = ?
             AND v.financial_year = ? AND v.status = 'Posted'
-        `).bind(creditLine.account_id, creditLine.customer_id, financialYear).first<any>();
+            AND date(v.voucher_date) <= date(?)
+        `).bind(creditLine.account_id, creditLine.customer_id, financialYear, voucherDate).first<any>();
         const outstandingPaise = Number(outstanding?.amount || 0);
         if (outstandingPaise <= 0) return fail('This customer has no posted outstanding balance in the selected financial year. Post the related sales voucher first, if appropriate.', 422);
         if (debitLine.debit_paise > outstandingPaise) {
@@ -520,7 +524,8 @@ export async function handleAccountingRequest(
           JOIN accounting_vouchers v ON v.id = l.voucher_id
           WHERE l.account_id = ? AND l.customer_id = ?
             AND v.financial_year = ? AND v.status = 'Posted'
-        `).bind(receiptLine.account_id, receiptLine.customer_id, voucher.financial_year).first<any>();
+            AND date(v.voucher_date) <= date(?)
+        `).bind(receiptLine.account_id, receiptLine.customer_id, voucher.financial_year, voucher.voucher_date).first<any>();
         const balancePaise = Number(currentBalance?.amount || 0);
         if (Number(receiptLine.credit_paise) > balancePaise) {
           return fail('Receipt cannot be posted because the customer\'s remaining posted balance is only ' + (balancePaise / 100).toFixed(2) + '.', 422);
