@@ -332,6 +332,74 @@ export async function handleAccountingRequest(
       return response({ success: true, vouchers: result.results });
     }
 
+    if (path === '/api/accounting/general-ledger' && method === 'GET') {
+      const financialYear = url.searchParams.get('financial_year') || 'FY2026-27';
+      const accountId = text(url.searchParams.get('account_id'), 100);
+      const fromDate = url.searchParams.get('from');
+      const toDate = url.searchParams.get('to');
+      if (!accountId) return fail('Select a ledger account.', 422);
+      if (!fromDate || !isDate(fromDate) || !toDate || !isDate(toDate)) {
+        return fail('from and to must be valid YYYY-MM-DD dates.', 422);
+      }
+      if (fromDate > toDate) return fail('From date cannot be later than To date.', 422);
+
+      const period = await env.DB.prepare(
+        'SELECT id, name, start_date, end_date FROM accounting_periods WHERE id = ?'
+      ).bind(financialYear).first<any>();
+      if (!period) return fail('Financial year not found.', 404);
+      if (fromDate < period.start_date || toDate > period.end_date) {
+        return fail('Ledger statement dates must fall within the selected financial year.', 422);
+      }
+
+      const account = await env.DB.prepare(
+        'SELECT id, account_code, name, account_type, normal_balance, is_group, is_active FROM ledger_accounts WHERE id = ?'
+      ).bind(accountId).first<any>();
+      if (!account || account.is_group === 1) return fail('Select a valid postable ledger account.', 422);
+      if (account.is_active !== 1) return fail('The selected ledger account is inactive.', 422);
+
+      // The financial year began with zero balances. Calculate any movement
+      // before the requested From date so a filtered statement still opens correctly.
+      const opening = await env.DB.prepare(`
+        SELECT COALESCE(SUM(l.debit_paise - l.credit_paise), 0) AS balance_paise
+        FROM accounting_voucher_lines l
+        JOIN accounting_vouchers v ON v.id = l.voucher_id
+        WHERE l.account_id = ? AND v.financial_year = ? AND v.status = 'Posted'
+          AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) < date(?)
+      `).bind(accountId, financialYear, period.start_date, fromDate).first<any>();
+
+      const result = await env.DB.prepare(`
+        SELECT l.id, l.line_number, l.customer_id, l.supplier_id, l.description,
+          l.debit_paise, l.credit_paise, v.id AS voucher_id, v.voucher_number,
+          v.voucher_type, v.voucher_date, v.narration,
+          c.legal_name AS customer_name, s.legal_name AS supplier_name
+        FROM accounting_voucher_lines l
+        JOIN accounting_vouchers v ON v.id = l.voucher_id
+        LEFT JOIN customers c ON c.id = l.customer_id
+        LEFT JOIN suppliers s ON s.id = l.supplier_id
+        WHERE l.account_id = ? AND v.financial_year = ? AND v.status = 'Posted'
+          AND date(v.voucher_date) >= date(?) AND date(v.voucher_date) <= date(?)
+        ORDER BY date(v.voucher_date), v.created_at, v.voucher_number, l.line_number
+      `).bind(accountId, financialYear, fromDate, toDate).all();
+
+      let runningBalance = Number(opening?.balance_paise || 0);
+      const entries = (result.results as any[]).map(line => {
+        runningBalance += Number(line.debit_paise || 0) - Number(line.credit_paise || 0);
+        return { ...line, running_balance_paise: runningBalance };
+      });
+      return response({
+        success: true,
+        financial_year: financialYear,
+        period,
+        account,
+        from: fromDate,
+        to: toDate,
+        opening_balance_paise: Number(opening?.balance_paise || 0),
+        entries,
+        closing_balance_paise: runningBalance,
+        note: 'Read-only statement of posted voucher lines. Financial-year opening balances are zero.',
+      });
+    }
+
     if (path === '/api/accounting/trial-balance' && method === 'GET') {
       const period = url.searchParams.get('financial_year') || 'FY2026-27';
       const asOf = url.searchParams.get('as_of');
