@@ -413,217 +413,185 @@ export function generateInvoiceHTML(
  * Helvetica font. This runs in the Cloudflare Workers runtime without a
  * browser, native binaries, or third-party PDF dependencies.
  */
-export function generateQuotationPDF(
+export async function generateQuotationPDF(
   settings: BusinessSettings,
   quotation: DBQuotation,
   items: DBQuotationItem[]
-): Uint8Array {
-  const PAGE_W = 595.28;
-  const PAGE_H = 841.89;
-  const LEFT = 42;
-  const RIGHT = PAGE_W - 42;
-  const encoder = new TextEncoder();
-
-  const clean = (value: unknown): string => String(value ?? '')
-    .replace(/₹/g, 'INR ')
-    .replace(/[–—]/g, '-')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, '?');
-
-  const esc = (value: unknown): string => clean(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
-
-  const money = (paise: number): string =>
-    'INR ' + (Number(paise || 0) / 100).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-      useGrouping: true,
-    });
-
-  const wrap = (value: unknown, maxChars: number): string[] => {
+): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const pdf = await PDFDocument.create();
+  const pageWidth = 595.28, pageHeight = 841.89;
+  const marginX = 28.35, marginTop = 34.02, marginBottom = 34.02;
+  const navy = rgb(0.063, 0.184, 0.349);
+  const dark = rgb(0.12, 0.15, 0.19);
+  const muted = rgb(0.38, 0.42, 0.47);
+  const light = rgb(0.94, 0.95, 0.97);
+  const white = rgb(1, 1, 1);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const clean = (v: unknown) => String(v ?? '').replace(/₹/g, 'INR ').replace(/[–—]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '?');
+  const money = (paise: number) => 'INR ' + (Number(paise || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const wrap = (value: unknown, maxWidth: number, size: number, font = regular): string[] => {
     const words = clean(value).split(/\s+/).filter(Boolean);
-    const result: string[] = [];
-    let line = '';
+    const lines: string[] = [];
+    let current = '';
     for (const word of words) {
-      if (word.length > maxChars) {
-        if (line) result.push(line);
-        line = '';
-        for (let i = 0; i < word.length; i += maxChars) result.push(word.slice(i, i + maxChars));
-      } else if (!line) line = word;
-      else if ((line + ' ' + word).length <= maxChars) line += ' ' + word;
-      else { result.push(line); line = word; }
-    }
-    if (line) result.push(line);
-    return result.length ? result : [''];
-  };
-
-  const pages: string[] = [];
-  let commands = '';
-  let y = 0;
-  let pageNumber = 0;
-
-  const text = (value: unknown, x: number, top: number, size = 9, bold = false) => {
-    commands += `BT /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${(PAGE_H - top).toFixed(2)} Tm (${esc(value)}) Tj ET\n`;
-  };
-  const line = (x1: number, top1: number, x2: number, top2: number, width = 0.6) => {
-    commands += `${width} w ${x1.toFixed(2)} ${(PAGE_H - top1).toFixed(2)} m ${x2.toFixed(2)} ${(PAGE_H - top2).toFixed(2)} l S\n`;
-  };
-  const rect = (x: number, top: number, width: number, height: number, gray = 0.94) => {
-    commands += `${gray} g ${x.toFixed(2)} ${(PAGE_H - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f 0 g\n`;
-  };
-
-  const startPage = (continued = false) => {
-    if (commands) pages.push(commands);
-    commands = '';
-    pageNumber += 1;
-    y = 42;
-    text(settings.legal_name || 'BABA ENTERPRISES', LEFT, y + 14, 17, true);
-    text('Industrial Rubber & Plastic Components Specialist', LEFT, y + 29, 8);
-    text(settings.address_line1, LEFT, y + 44, 8);
-    text([settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '), LEFT, y + 56, 8);
-    text('GSTIN: ' + (settings.gstin || ''), LEFT, y + 69, 8, true);
-    text('Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / '), LEFT, y + 81, 8);
-    text(settings.email || '', LEFT, y + 93, 8);
-    text(continued ? 'QUOTATION (CONTINUED)' : 'QUOTATION', 390, y + 17, 15, true);
-    text('Quotation No: ' + (quotation.quotation_number || 'DRAFT'), 390, y + 36, 8, true);
-    text('Date: ' + (quotation.quotation_date || ''), 390, y + 49, 8);
-    text('Valid Until: ' + (quotation.valid_until || ''), 390, y + 62, 8);
-    line(LEFT, y + 104, RIGHT, y + 104, 1.2);
-    y += 120;
-    if (!continued) {
-      if (Number(quotation.buyer_fields_version || 1) < 2) {
-        // Preserve the original buyer-field meaning for historical quotations.
-        text('BILL TO', LEFT, y, 8, true);
-        text(quotation.buyer_name || '', LEFT, y + 15, 10, true);
-        text(quotation.buyer_company || '', LEFT, y + 28, 8);
-        const addressLines = wrap(quotation.buyer_address || 'Address not provided', 58);
-        addressLines.forEach((v, i) => text(v, LEFT, y + 41 + i * 11, 8));
-        text('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'), 310, y + 15, 8);
-        text('State: ' + [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (' ) + (quotation.buyer_state_code ? ')' : ''), 310, y + 28, 8);
-        text('PIN Code: ' + (quotation.buyer_pincode || '-'), 310, y + 41, 8);
-        text('Phone: ' + (quotation.buyer_phone || '-'), 310, y + 54, 8);
-        text('Email: ' + (quotation.buyer_email || '-'), 310, y + 67, 8);
-        if (quotation.ar_number) text('AR Number: ' + quotation.ar_number, 310, y + 80, 8);
-        y += Math.max(quotation.ar_number ? 95 : 82, 52 + addressLines.length * 11);
-      } else {
-        // New quotations use the same legal/trade-name and address semantics as invoices.
-        text('BILL TO', LEFT, y, 8, true);
-        text(quotation.buyer_name || '', LEFT, y + 15, 10, true);
-        if (quotation.buyer_company) text(quotation.buyer_company, LEFT, y + 28, 8);
-        const addressParts = (quotation.buyer_address || 'Address not provided')
-          .split(/[,\n]+/).map((part) => part.trim()).filter(Boolean);
-        const addressLines = addressParts.reduce((all: string[], part: string) => all.concat(wrap(part, 58)), [] as string[]);
-        const locationText = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', ');
-        const locationLines = locationText ? wrap(locationText, 58) : [];
-        const addressTop = y + (quotation.buyer_company ? 41 : 28);
-        addressLines.forEach((v, i) => text(v, LEFT, addressTop + i * 11, 8));
-        locationLines.forEach((v, i) => text(v, LEFT, addressTop + (addressLines.length + i) * 11, 8));
-        const detailTop = y + 15;
-        text('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'), 310, detailTop, 8);
-        text('State: ' + [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (' ) + (quotation.buyer_state_code ? ')' : ''), 310, detailTop + 13, 8);
-        text('Contact: ' + (quotation.buyer_contact_person || '-'), 310, detailTop + 26, 8);
-        text('Phone: ' + (quotation.buyer_phone || '-'), 310, detailTop + 39, 8);
-        text('Email: ' + (quotation.buyer_email || '-'), 310, detailTop + 52, 8);
-        if (quotation.ar_number) text('AR Number: ' + quotation.ar_number, 310, detailTop + 65, 8);
-        y += Math.max(quotation.ar_number ? 107 : 94, (addressTop - y) + (addressLines.length + locationLines.length) * 11 + 12);
+      const candidate = current ? current + ' ' + word : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) current = candidate;
+      else {
+        if (current) lines.push(current);
+        if (font.widthOfTextAtSize(word, size) <= maxWidth) current = word;
+        else {
+          let part = '';
+          for (const char of word) {
+            if (font.widthOfTextAtSize(part + char, size) > maxWidth && part) { lines.push(part); part = char; }
+            else part += char;
+          }
+          current = part;
+        }
       }
     }
-    rect(LEFT, y, RIGHT - LEFT, 20, 0.90);
-    text('#', LEFT + 5, y + 13, 8, true);
-    text('Description', LEFT + 27, y + 13, 8, true);
-    text('HSN', 285, y + 13, 8, true);
-    text('Qty', 337, y + 13, 8, true);
-    text('Rate', 385, y + 13, 8, true);
-    text('GST', 440, y + 13, 8, true);
-    text('Amount', 490, y + 13, 8, true);
-    y += 20;
+    if (current) lines.push(current);
+    return lines.length ? lines : [''];
   };
+  const logoUrl = 'https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1';
+  const logoResponse = await fetch(logoUrl);
+  if (!logoResponse.ok) throw new Error('BABA Enterprises logo could not be loaded for quotation PDF generation.');
+  const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+  const logo = await pdf.embedPng(logoBytes);
+  const logoDims = logo.scale(Math.min(206.25 / logo.width, 67.5 / logo.height));
 
-  startPage(false);
+  let page = pdf.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - marginTop;
+  const drawText = (value: unknown, x: number, top: number, size = 8, isBold = false, color = dark) => {
+    page.drawText(clean(value), { x, y: pageHeight - top - size, size, font: isBold ? bold : regular, color });
+  };
+  const drawLine = (x1: number, top: number, x2: number, width = 0.6, color = muted) => {
+    page.drawLine({ start: { x: x1, y: pageHeight - top }, end: { x: x2, y: pageHeight - top }, thickness: width, color });
+  };
+  const drawRule = (top: number) => {
+    const width = pageWidth - marginX * 2, segment = width / 3;
+    page.drawRectangle({ x: marginX, y: pageHeight - top - 3, width: segment, height: 3, color: rgb(1, 0.60, 0.20) });
+    page.drawRectangle({ x: marginX + segment, y: pageHeight - top - 3, width: segment, height: 3, color: white, borderColor: rgb(0.82, 0.82, 0.82), borderWidth: 0.2 });
+    page.drawRectangle({ x: marginX + segment * 2, y: pageHeight - top - 3, width: width - segment * 2, height: 3, color: rgb(0.075, 0.53, 0.20) });
+  };
+  const drawFrame = () => {
+    page.drawRectangle({ x: marginX, y: marginBottom, width: pageWidth - marginX * 2, height: pageHeight - marginTop - marginBottom, borderColor: rgb(0.78, 0.80, 0.83), borderWidth: 0.45 });
+    drawRule(marginTop);
+    drawRule(pageHeight - marginBottom - 5);
+  };
+  const drawFooter = (number: number) => {
+    drawText('This is a computer-generated quotation.', marginX + 5, pageHeight - marginBottom - 20, 6.5, false, muted);
+    const label = 'Page ' + number;
+    drawText(label, pageWidth - marginX - 45, pageHeight - marginBottom - 20, 6.5, false, muted);
+  };
+  const startPage = (continued = false) => {
+    page = pdf.addPage([pageWidth, pageHeight]);
+    drawFrame();
+    const logoX = marginX + 5, logoTop = marginTop + 12;
+    page.drawImage(logo, { x: logoX, y: pageHeight - logoTop - logoDims.height, width: logoDims.width, height: logoDims.height });
+    const seller = [
+      settings.address_line1,
+      [settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '),
+      'GSTIN: ' + (settings.gstin || ''),
+      'Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / '),
+      settings.email || '',
+    ].filter(Boolean);
+    seller.forEach((v, n) => drawText(v, marginX + 5, marginTop + 88 + n * 11, 7.5, n === 2));
+    page.drawRectangle({ x: 365, y: pageHeight - marginTop - 105, width: pageWidth - marginX - 365, height: 91, color: rgb(0.96, 0.97, 0.98) });
+    drawText(continued ? 'QUOTATION (CONTINUED)' : 'QUOTATION', 378, marginTop + 31, 15, true, navy);
+    drawLine(378, marginTop + 39, pageWidth - marginX - 10, 0.7);
+    drawText('Quotation No:', 378, marginTop + 55, 7.5, true);
+    drawText(quotation.quotation_number || 'DRAFT', 445, marginTop + 55, 7.5);
+    drawText('Date:', 378, marginTop + 69, 7.5, true);
+    drawText(quotation.quotation_date || '', 445, marginTop + 69, 7.5);
+    drawText('Valid Until:', 378, marginTop + 83, 7.5, true);
+    drawText(quotation.valid_until || '', 445, marginTop + 83, 7.5);
+    drawLine(marginX, marginTop + 142, pageWidth - marginX, 1, navy);
+    let cursor = marginTop + 158;
+    if (!continued) {
+      page.drawRectangle({ x: marginX, y: pageHeight - cursor - 17, width: pageWidth - marginX * 2, height: 17, color: light });
+      drawText('BILL TO', marginX + 7, cursor + 3, 8, true, navy);
+      drawText(quotation.buyer_name || '', marginX + 7, cursor + 23, 9.5, true);
+      let addressTop = cursor + 37;
+      if (quotation.buyer_company) { drawText(quotation.buyer_company, marginX + 7, addressTop, 7.5); addressTop += 11; }
+      const addressParts = (quotation.buyer_address || 'Address not provided').split(/[,\n]+/).map(v => v.trim()).filter(Boolean);
+      const addressLines = addressParts.flatMap(v => wrap(v, 260, 7.5)).slice(0, 4);
+      const location = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', ');
+      const locationLines = location ? wrap(location, 260, 7.5).slice(0, 2) : [];
+      addressLines.forEach((v, n) => drawText(v, marginX + 7, addressTop + n * 10, 7.5));
+      locationLines.forEach((v, n) => drawText(v, marginX + 7, addressTop + (addressLines.length + n) * 10, 7.5));
+      const rightX = 325;
+      drawText('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'), rightX, cursor + 23, 7.5);
+      drawText('State: ' + [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (' ) + (quotation.buyer_state_code ? ')' : ''), rightX, cursor + 36, 7.5);
+      drawText('Contact: ' + (quotation.buyer_contact_person || '-'), rightX, cursor + 49, 7.5);
+      drawText('Phone: ' + (quotation.buyer_phone || '-'), rightX, cursor + 62, 7.5);
+      drawText('Email: ' + (quotation.buyer_email || '-'), rightX, cursor + 75, 7.5);
+      if (quotation.ar_number) drawText('AR Number: ' + quotation.ar_number, rightX, cursor + 88, 7.5);
+      cursor += Math.max(111, 43 + (addressLines.length + locationLines.length) * 10);
+      drawLine(marginX, cursor, pageWidth - marginX, 0.6);
+      cursor += 14;
+    }
+    page.drawRectangle({ x: marginX, y: pageHeight - cursor - 21, width: pageWidth - marginX * 2, height: 21, color: navy });
+    const headers = [['#', marginX + 7], ['Description', marginX + 28], ['HSN', 300], ['Qty', 350], ['Rate (INR)', 395], ['GST', 462], ['Amount', 505]] as const;
+    headers.forEach(([label, x]) => drawText(label, x, cursor + 6, 7.5, true, white));
+    y = cursor + 27;
+    return cursor;
+  };
+  let pageNo = 0;
+  const newPage = (continued = false) => { pageNo += 1; startPage(continued); };
+  newPage(false);
   items.forEach((item, index) => {
-    const description = wrap(item.item_description, 38);
-    const rowHeight = Math.max(25, description.length * 10 + 12);
-    if (y + rowHeight > 735) startPage(true);
-    text(String(index + 1), LEFT + 5, y + 15, 8);
-    description.forEach((v, i) => text(v, LEFT + 27, y + 13 + i * 10, 8));
-    text(item.hsn_code || '-', 285, y + 15, 7);
-    text((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' ' + item.unit_of_measure, 337, y + 15, 7);
-    text((Number(item.unit_price_paise) / 100).toFixed(2), 385, y + 15, 7);
-    text(item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%', 440, y + 15, 7);
-    text((Number(item.total_amount_paise) / 100).toFixed(2), 490, y + 15, 7);
-    line(LEFT, y + rowHeight, RIGHT, y + rowHeight, 0.35);
+    const description = wrap(item.item_description, 240, 7.5);
+    const rowHeight = Math.max(27, description.length * 10 + 13);
+    if (y + rowHeight > pageHeight - marginBottom - 65) { drawFooter(pageNo); newPage(true); }
+    if (index % 2 === 1) page.drawRectangle({ x: marginX, y: pageHeight - y - rowHeight, width: pageWidth - marginX * 2, height: rowHeight, color: rgb(0.975, 0.98, 0.985) });
+    drawText(String(index + 1), marginX + 7, y + 7, 7.5);
+    description.forEach((v, n) => drawText(v, marginX + 28, y + 7 + n * 10, 7.5, n === 0));
+    drawText(item.hsn_code || '-', 300, y + 7, 7);
+    drawText((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' ' + item.unit_of_measure, 350, y + 7, 7);
+    drawText((Number(item.unit_price_paise) / 100).toFixed(2), 395, y + 7, 7);
+    drawText(item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%', 462, y + 7, 7);
+    drawText((Number(item.total_amount_paise) / 100).toFixed(2), 505, y + 7, 7, true);
+    drawLine(marginX, y + rowHeight, pageWidth - marginX, 0.35, rgb(0.78, 0.80, 0.83));
     y += rowHeight;
   });
-
-  if (y > 680) startPage(true);
-  y += 16;
-  line(LEFT, y, RIGHT, y, 0.9);
+  const summaryLines = Number(quotation.is_interstate) === 1 ? 6 : 7;
+  const summaryHeight = 18 + summaryLines * 13 + 38 + 110;
+  if (y + summaryHeight > pageHeight - marginBottom - 35) { drawFooter(pageNo); newPage(true); }
+  y += 14;
+  drawLine(marginX, y, pageWidth - marginX, 0.9, navy);
   y += 18;
-  text('Subtotal (before discount): ' + money(quotation.subtotal_gross_paise), 335, y, 8);
+  drawText('Amount Chargeable (in words):', marginX + 5, y, 7.5, true, navy);
+  drawText(numberToWords(Number(quotation.total_amount_paise || 0)), marginX + 5, y + 13, 7.5);
+  const totalX = 355;
+  const totalLine = (label: string, value: string) => { drawText(label, totalX, y, 7.5); drawText(value, 475, y, 7.5, true); y += 13; };
+  totalLine('Subtotal (before discount):', money(quotation.subtotal_gross_paise));
+  totalLine('Discount:', money(quotation.total_discount_paise));
+  totalLine('Taxable Amount:', money(quotation.taxable_amount_paise));
+  if (Number(quotation.is_interstate) === 1) totalLine('IGST:', money(quotation.igst_amount_paise));
+  else { totalLine('CGST:', money(quotation.cgst_amount_paise)); totalLine('SGST:', money(quotation.sgst_amount_paise)); }
+  totalLine('Total Tax:', money(quotation.total_tax_paise));
+  page.drawRectangle({ x: 345, y: pageHeight - y - 25, width: pageWidth - marginX - 345, height: 25, color: rgb(0.88, 0.90, 0.93) });
+  drawText('GRAND TOTAL', 355, y + 7, 9, true, navy);
+  drawText(money(quotation.total_amount_paise), 475, y + 7, 9, true, navy);
+  y += 38;
+  drawLine(marginX, y, pageWidth - marginX, 0.6);
+  y += 15;
+  drawText('TERMS & CONDITIONS', marginX + 5, y, 8, true, navy);
   y += 14;
-  text('Discount: ' + money(quotation.total_discount_paise), 335, y, 8);
-  y += 14;
-  text('Taxable Amount: ' + money(quotation.taxable_amount_paise), 335, y, 8);
-  y += 14;
-  if (Number(quotation.is_interstate) === 1) {
-    text('IGST: ' + money(quotation.igst_amount_paise), 335, y, 8);
-    y += 14;
-  } else {
-    text('CGST: ' + money(quotation.cgst_amount_paise), 335, y, 8);
-    y += 14;
-    text('SGST: ' + money(quotation.sgst_amount_paise), 335, y, 8);
-    y += 14;
-  }
-  text('Total Tax: ' + money(quotation.total_tax_paise), 335, y, 8);
-  y += 16;
-  rect(320, y - 11, RIGHT - 320, 25, 0.90);
-  text('GRAND TOTAL: ' + money(quotation.total_amount_paise), 330, y + 5, 11, true);
-  y += 28;
-
-  text('Payment Terms: ' + (quotation.payment_terms || settings.default_payment_terms || 'As mutually agreed'), LEFT, y, 8);
-  y += 13;
-  text('Delivery Terms: ' + (quotation.delivery_terms || 'As mutually agreed'), LEFT, y, 8);
-  y += 13;
-  const notes = wrap(quotation.notes || '', 95);
-  notes.slice(0, 3).forEach((v, i) => text('Notes: ' + v, LEFT, y + i * 11, 8));
-  y += Math.min(notes.length, 3) * 11 + 12;
-  text('For ' + (settings.legal_name || 'BABA ENTERPRISES'), 390, Math.min(y + 8, 780), 9, true);
-  text('Authorized Signatory', 390, Math.min(y + 48, 820), 8);
-  text('This is a computer-generated quotation.', LEFT, 810, 7);
-  text('Page ' + pageNumber, RIGHT - 40, 810, 7);
-  pages.push(commands);
-
-  const objects: string[] = [];
-  const addObject = (body: string) => { objects.push(body); return objects.length; };
-  const catalogId = addObject('');
-  const pagesId = addObject('');
-  const fontRegularId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
-  const fontBoldId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
-  const pageIds: number[] = [];
-  pages.forEach((stream) => {
-    const streamBytes = encoder.encode(stream);
-    const contentId = addObject(`<< /Length ${streamBytes.length} >>\nstream\n${stream}endstream`);
-    const pageId = addObject('');
-    pageIds.push(pageId);
-    objects[pageId - 1] = `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`;
-  });
-  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => id + ' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
-
-  let pdf = '%PDF-1.4\n% BABA ENTERPRISES\n';
-  const offsets = [0];
-  objects.forEach((body, index) => {
-    offsets.push(encoder.encode(pdf).length);
-    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
-  });
-  const xrefOffset = encoder.encode(pdf).length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach(offset => { pdf += String(offset).padStart(10, '0') + ' 00000 n \n'; });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return encoder.encode(pdf);
+  drawText('Payment Terms: ' + (quotation.payment_terms || settings.default_payment_terms || 'As mutually agreed'), marginX + 5, y, 7.5);
+  y += 12;
+  drawText('Delivery Terms: ' + (quotation.delivery_terms || 'As mutually agreed'), marginX + 5, y, 7.5);
+  y += 12;
+  const notes = wrap(quotation.notes || '', 500, 7.5).slice(0, 3);
+  notes.forEach((v, n) => drawText((n === 0 ? 'Notes: ' : '       ') + v, marginX + 5, y + n * 10, 7.5));
+  y += notes.length * 10 + 14;
+  drawText('Customer Acceptance', marginX + 5, Math.min(y + 6, pageHeight - marginBottom - 42), 7.5, true, navy);
+  page.drawLine({ start: { x: marginX + 5, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, end: { x: marginX + 150, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, thickness: 0.6 });
+  drawText('For ' + (settings.legal_name || 'BABA ENTERPRISES'), 390, Math.min(y + 10, pageHeight - marginBottom - 38), 8.5, true, navy);
+  page.drawLine({ start: { x: 390, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, end: { x: pageWidth - marginX - 5, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, thickness: 0.6 });
+  drawText('Authorized Signatory', 410, Math.min(y + 54, pageHeight - marginBottom - 4), 7.5);
+  drawFooter(pageNo);
+  return await pdf.save();
 }
