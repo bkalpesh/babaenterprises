@@ -498,7 +498,7 @@ export async function generateQuotationPDF(
       settings.email || '',
       settings.website_url ? 'Website: ' + settings.website_url : '',
     ].filter(Boolean);
-    seller.forEach((v, n) => drawText(v, marginX + 5, marginTop + 88 + n * 11, 7.5, n === 2));
+    seller.forEach((v, n) => drawText(v, marginX + 5, marginTop + 84 + n * 9.5, 7.2, n === 2));
     page.drawRectangle({ x: 365, y: pageHeight - marginTop - 105, width: pageWidth - marginX - 365, height: 91, color: rgb(0.96, 0.97, 0.98) });
     drawText(continued ? 'QUOTATION (CONTINUED)' : 'QUOTATION', 378, marginTop + 31, 15, true, navy);
     drawText('Quotation No:', 378, marginTop + 55, 7.5, true);
