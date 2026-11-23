@@ -1188,7 +1188,7 @@ export const worker = {
         ).bind(quoteId).all<DBQuotationItem>();
         if (!itemRows.results?.length) return errorResponse('Quotation has no line items.', 422);
 
-        const pdfBytes = generateQuotationPDF(settings, quote, itemRows.results);
+        const pdfBytes = await generateQuotationPDF(settings, quote, itemRows.results);
         const objectKey = `quotation-pdfs/${quoteId}.pdf`;
         await env.DOCUMENTS_BUCKET.put(objectKey, pdfBytes, {
           httpMetadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
@@ -1587,7 +1587,7 @@ export const worker = {
         if (!pdfObject) {
           const settings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
           if (!settings) return errorResponse('Business settings are not configured; quotation PDF cannot be generated.', 503);
-          const pdfBytes = generateQuotationPDF(settings, quote, quoteItems.results);
+          const pdfBytes = await generateQuotationPDF(settings, quote, quoteItems.results);
           pdfR2Key = `quotation-pdfs/${quoteId}.pdf`;
           await env.DOCUMENTS_BUCKET.put(pdfR2Key, pdfBytes, {
             httpMetadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
