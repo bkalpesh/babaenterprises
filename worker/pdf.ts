@@ -461,7 +461,7 @@ export async function generateQuotationPDF(
   const logo = await pdf.embedPng(logoBytes);
   const logoDims = logo.scale(Math.min(206.25 / logo.width, 67.5 / logo.height));
 
-  let page = pdf.addPage([pageWidth, pageHeight]);
+  let page!: ReturnType<typeof pdf.addPage>;
   let y = pageHeight - marginTop;
   const drawText = (value: unknown, x: number, top: number, size = 8, isBold = false, color = dark) => {
     page.drawText(clean(value), { x, y: pageHeight - top - size, size, font: isBold ? bold : regular, color });
