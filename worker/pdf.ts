@@ -386,6 +386,10 @@ export function generateInvoiceHTML(
         </td>
       </tr>
       </table>
+      <div style="padding: 7px 12px 8px; font-size: 9px; line-height: 1.4; color: #475569; background: #fff; break-inside: avoid; page-break-inside: avoid;">
+        <div class="bold" style="color: #102F59; margin-bottom: 2px;">Declaration:</div>
+        <div>We hereby certify that our GST registration is valid and in force on the date of supply of the goods specified in this tax invoice. We further declare that the particulars furnished in this invoice are true and correct, and the transaction covered herein shall be duly accounted for in the applicable GST returns. The tax payable on such supply has been paid or shall be paid in accordance with the applicable provisions of the Goods and Services Tax Acts, 2017, and the Rules made thereunder.</div>
+      </div>
       <div class="tricolor-rule" aria-hidden="true"></div>
     </div>
   </div>
