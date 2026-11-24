@@ -754,7 +754,7 @@ export const QuotationCreateModal: React.FC<QuotationCreateModalProps> = ({
                     onChange={(e) => setApplyRoundOff(e.target.checked)}
                     className="rounded text-[#0755A5]"
                   />
-                  <span>Apply Round Off ({roundOff >= 0 ? `+₹${roundOff.toFixed(2)}` : `-₹${Math.abs(roundOff).toFixed(2)}`})</span>
+                  <span>Round Off to the Quotation ({roundOff >= 0 ? `+₹${roundOff.toFixed(2)}` : `-₹${Math.abs(roundOff).toFixed(2)}`})</span>
                 </label>
               </div>
               <div className="text-xs uppercase text-slate-400 font-semibold">Grand Total (INR)</div>
