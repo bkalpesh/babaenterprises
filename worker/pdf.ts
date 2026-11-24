@@ -560,7 +560,8 @@ export async function generateQuotationPDF(
     drawLine(marginX, y + rowHeight, pageWidth - marginX, 0.35, rgb(0.78, 0.80, 0.83));
     y += rowHeight;
   });
-  const summaryLines = Number(quotation.is_interstate) === 1 ? 6 : 7;
+  const hasRoundOff = Number(quotation.round_off_paise || 0) !== 0;
+  const summaryLines = (Number(quotation.is_interstate) === 1 ? 6 : 7) + (hasRoundOff ? 1 : 0);
   const summaryHeight = 18 + summaryLines * 13 + 38 + 200;
   if (y + summaryHeight > pageHeight - marginBottom - 35) { drawFooter(pageNo); newPage(true); }
   y += 14;
@@ -576,6 +577,7 @@ export async function generateQuotationPDF(
   if (Number(quotation.is_interstate) === 1) totalLine('IGST:', money(quotation.igst_amount_paise));
   else { totalLine('CGST:', money(quotation.cgst_amount_paise)); totalLine('SGST:', money(quotation.sgst_amount_paise)); }
   totalLine('Total Tax:', money(quotation.total_tax_paise));
+  if (hasRoundOff) totalLine('Round Off to the Quotation:', money(quotation.round_off_paise));
   page.drawRectangle({ x: 345, y: pageHeight - y - 25, width: pageWidth - marginX - 345, height: 25, color: rgb(0.88, 0.90, 0.93) });
   drawText('GRAND TOTAL', 355, y + 7, 9, true, navy);
   drawText(money(quotation.total_amount_paise), 475, y + 7, 9, true, navy);
