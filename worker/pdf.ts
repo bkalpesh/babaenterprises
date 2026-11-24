@@ -569,12 +569,7 @@ export async function generateQuotationPDF(
     drawText(item.hsn_code || '-', 300, y + 7, 7);
     drawText((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' ' + item.unit_of_measure, 350, y + 7, 7);
     drawText((Number(item.unit_price_paise) / 100).toFixed(2), 395, y + 7, 7);
-    if (Number(quotation.is_interstate) === 1) {
-      drawText(item.igst_rate_bps === null || item.igst_rate_bps === undefined ? '-' : 'I ' + (Number(item.igst_rate_bps) / 100).toFixed(2) + '%', 462, y + 7, 6.2);
-    } else {
-      drawText('C ' + (Number(item.cgst_rate_bps || 0) / 100).toFixed(2) + '%', 462, y + 4, 6.2);
-      drawText('S ' + (Number(item.sgst_rate_bps || 0) / 100).toFixed(2) + '%', 462, y + 14, 6.2);
-    }
+    drawText(item.gst_rate_bps === null || item.gst_rate_bps === undefined ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%', 462, y + 7, 7);
     drawText((Number(item.total_amount_paise) / 100).toFixed(2), 505, y + 7, 7, true);
     drawLine(marginX, y + rowHeight, pageWidth - marginX, 0.35, rgb(0.78, 0.80, 0.83));
     y += rowHeight;
@@ -593,8 +588,19 @@ export async function generateQuotationPDF(
   totalLine('Subtotal (before discount):', money(quotation.subtotal_gross_paise));
   totalLine('Discount:', money(quotation.total_discount_paise));
   totalLine('Taxable Amount:', money(quotation.taxable_amount_paise));
-  if (Number(quotation.is_interstate) === 1) totalLine('IGST:', money(quotation.igst_amount_paise));
-  else { totalLine('CGST:', money(quotation.cgst_amount_paise)); totalLine('SGST:', money(quotation.sgst_amount_paise)); }
+  const uniqueRateLabels = (rates: number[]) => {
+    const labels = [...new Set(rates.filter(rate => Number.isFinite(rate) && rate > 0).map(rate => (rate / 100).toFixed(2)))].sort((a, b) => Number(a) - Number(b));
+    return labels.length === 0 ? '' : labels.length === 1 ? labels[0] + '%' : 'Multiple rates';
+  };
+  if (Number(quotation.is_interstate) === 1) {
+    const igstRateLabel = uniqueRateLabels(items.map(item => Number(item.igst_rate_bps || 0)));
+    totalLine('IGST' + (igstRateLabel ? ' (' + igstRateLabel + '):' : ':'), money(quotation.igst_amount_paise));
+  } else {
+    const cgstRateLabel = uniqueRateLabels(items.map(item => Number(item.cgst_rate_bps || 0)));
+    const sgstRateLabel = uniqueRateLabels(items.map(item => Number(item.sgst_rate_bps || 0)));
+    totalLine('CGST' + (cgstRateLabel ? ' (' + cgstRateLabel + '):' : ':'), money(quotation.cgst_amount_paise));
+    totalLine('SGST' + (sgstRateLabel ? ' (' + sgstRateLabel + '):' : ':'), money(quotation.sgst_amount_paise));
+  }
   totalLine('Total Tax:', money(quotation.total_tax_paise));
   if (hasRoundOff) totalLine('Round Off to the Quotation:', money(quotation.round_off_paise));
   page.drawRectangle({ x: 345, y: pageHeight - y - 25, width: pageWidth - marginX - 345, height: 25, color: rgb(0.88, 0.90, 0.93) });
