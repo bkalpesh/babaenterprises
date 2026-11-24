@@ -1397,6 +1397,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
 
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Full Description <span className="text-red-600">*</span></label>
+                        <textarea
+                          rows={4}
+                          value={editingProduct.fullDescription || editingProduct.full_description || ''}
+                          onChange={(e) =>
+                            setEditingProduct({ ...editingProduct, fullDescription: e.target.value, full_description: e.target.value })
+                          }
+                          placeholder="Enter the complete product description for catalogue details."
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#0755A5]"
+                        />
+                        <p className="mt-1 text-[11px] text-slate-500">Required when creating a new product.</p>
+                      </div>
+
                       <div className="flex items-center gap-2 pt-1"><input type="checkbox" id="product_show_on_website" checked={Boolean(editingProduct.showOnWebsite ?? (editingProduct.show_on_website === undefined ? true : Boolean(editingProduct.show_on_website)))} onChange={(e) => setEditingProduct({ ...editingProduct, showOnWebsite: e.target.checked, show_on_website: e.target.checked ? 1 : 0 })} className="rounded text-[#0755A5] focus:ring-[#0755A5]" /><label htmlFor="product_show_on_website" className="text-xs font-semibold text-slate-700">Show on public website</label><span className="text-[11px] text-slate-500">(Does not affect invoicing)</span></div>
                       <div className="flex items-center gap-2 pt-1">
                         <input
@@ -1426,7 +1440,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             if (!editingProduct) return;
                             setIsSavingProduct(true);
                             setProductSaveError(null);
-                            if (isCreatingProduct && (!editingProduct.name.trim() || !editingProduct.shortDescription.trim() || !editingProduct.fullDescription?.trim())) { setProductSaveError('Product name, short description and full description are required.'); setIsSavingProduct(false); return; }
+                            if (isCreatingProduct && (!String(editingProduct.name || '').trim() || !String(editingProduct.shortDescription || editingProduct.short_description || '').trim() || !String(editingProduct.fullDescription || editingProduct.full_description || '').trim())) { setProductSaveError('Product name, short description and full description are required.'); setIsSavingProduct(false); return; }
                             const res = isCreatingProduct ? await ApiService.createProduct(editingProduct) : await ApiService.updateProduct(editingProduct.id, editingProduct);
                             if (res.success) {
                               setEditingProduct(null);
