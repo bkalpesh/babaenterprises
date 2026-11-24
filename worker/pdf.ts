@@ -557,7 +557,7 @@ export async function generateQuotationPDF(
     y += rowHeight;
   });
   const summaryLines = Number(quotation.is_interstate) === 1 ? 6 : 7;
-  const summaryHeight = 18 + summaryLines * 13 + 38 + 110;
+  const summaryHeight = 18 + summaryLines * 13 + 38 + 200;
   if (y + summaryHeight > pageHeight - marginBottom - 35) { drawFooter(pageNo); newPage(true); }
   y += 14;
   drawLine(marginX, y, pageWidth - marginX, 0.9, navy);
@@ -592,6 +592,10 @@ export async function generateQuotationPDF(
   drawText('For ' + (settings.legal_name || 'BABA ENTERPRISES'), 390, Math.min(y + 10, pageHeight - marginBottom - 38), 8.5, true, navy);
   page.drawLine({ start: { x: 390, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, end: { x: pageWidth - marginX - 5, y: pageHeight - Math.min(y + 42, pageHeight - marginBottom - 10) }, thickness: 0.6 });
   drawText('Authorized Signatory', 410, Math.min(y + 54, pageHeight - marginBottom - 4), 7.5);
+  const declaration = 'We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
+  const declarationLines = wrap(declaration, pageWidth - marginX * 2 - 12, 7.5);
+  drawText('DECLARATION', marginX + 5, y + 70, 8, true, navy);
+  declarationLines.forEach((line, index) => drawText(line, marginX + 5, y + 83 + index * 9, 7.5));
   drawFooter(pageNo);
   return await pdf.save();
 }
