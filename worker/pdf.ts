@@ -59,7 +59,7 @@ function numberToWords(paise: number): string {
 
 function formatQuotationDate(value: string | null | undefined): string {
   if (!value) return '';
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value.trim());
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return value;
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
@@ -526,7 +526,7 @@ export async function generateQuotationPDF(
       drawText(quotation.buyer_name || '', marginX + 7, cursor + 23, 9.5, true);
       let addressTop = cursor + 37;
       const normalizeBuyerLabel = (value: string | null | undefined) =>
-        (value || '').normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN');
+        (value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
       const companyDuplicatesBuyer = normalizeBuyerLabel(quotation.buyer_company) !== '' &&
         normalizeBuyerLabel(quotation.buyer_company) === normalizeBuyerLabel(quotation.buyer_name);
       if (quotation.buyer_company && !companyDuplicatesBuyer) {
