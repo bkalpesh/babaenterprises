@@ -57,6 +57,13 @@ function numberToWords(paise: number): string {
   return 'INR ' + words.trim() + paiseWords + ' Only';
 }
 
+function formatQuotationDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value.trim());
+  if (!match) return value;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
 function formatInvoiceDate(value: string | null | undefined): string {
   if (!value) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
@@ -508,17 +515,24 @@ export async function generateQuotationPDF(
     drawText('Quotation No:', 378, marginTop + 55, 7.5, true);
     drawText(quotation.quotation_number || 'DRAFT', 445, marginTop + 55, 7.5);
     drawText('Date:', 378, marginTop + 69, 7.5, true);
-    drawText(quotation.quotation_date || '', 445, marginTop + 69, 7.5);
+    drawText(formatQuotationDate(quotation.quotation_date), 445, marginTop + 69, 7.5);
     drawText('Valid Until:', 378, marginTop + 83, 7.5, true);
-    drawText(quotation.valid_until || '', 445, marginTop + 83, 7.5);
+    drawText(formatQuotationDate(quotation.valid_until), 445, marginTop + 83, 7.5);
     drawLine(marginX, marginTop + 142, pageWidth - marginX, 1, navy);
     let cursor = marginTop + 158;
     if (!continued) {
       page.drawRectangle({ x: marginX, y: pageHeight - cursor - 17, width: pageWidth - marginX * 2, height: 17, color: light });
-      drawText('BILL TO', marginX + 7, cursor + 3, 8, true, navy);
+      drawText('QUOTATION TO', marginX + 7, cursor + 3, 8, true, navy);
       drawText(quotation.buyer_name || '', marginX + 7, cursor + 23, 9.5, true);
       let addressTop = cursor + 37;
-      if (quotation.buyer_company) { drawText(quotation.buyer_company, marginX + 7, addressTop, 7.5); addressTop += 11; }
+      const normalizeBuyerLabel = (value: string | null | undefined) =>
+        (value || '').normalize('NFKC').trim().replace(/\\s+/g, ' ').toLocaleLowerCase('en-IN');
+      const companyDuplicatesBuyer = normalizeBuyerLabel(quotation.buyer_company) !== '' &&
+        normalizeBuyerLabel(quotation.buyer_company) === normalizeBuyerLabel(quotation.buyer_name);
+      if (quotation.buyer_company && !companyDuplicatesBuyer) {
+        drawText(quotation.buyer_company, marginX + 7, addressTop, 7.5);
+        addressTop += 11;
+      }
       const addressParts = (quotation.buyer_address || 'Address not provided').split(/[,\n]+/).map(v => v.trim()).filter(Boolean);
       const addressLines = addressParts.flatMap(v => wrap(v, 260, 7.5)).slice(0, 4);
       const location = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', ');
@@ -537,7 +551,7 @@ export async function generateQuotationPDF(
       cursor += 14;
     }
     page.drawRectangle({ x: marginX, y: pageHeight - cursor - 21, width: pageWidth - marginX * 2, height: 21, color: navy });
-    const headers = [['#', marginX + 7], ['Description', marginX + 28], ['HSN', 300], ['Qty', 350], ['Rate (INR)', 395], ['GST', 462], ['Amount', 505]] as const;
+    const headers = [['#', marginX + 7], ['Description', marginX + 28], ['HSN', 300], ['Qty', 350], ['Rate (INR)', 395], ['GST %', 462], ['Amount', 505]] as const;
     headers.forEach(([label, x]) => drawText(label, x, cursor + 6, 7.5, true, white));
     y = cursor + 27;
     return cursor;
@@ -555,7 +569,12 @@ export async function generateQuotationPDF(
     drawText(item.hsn_code || '-', 300, y + 7, 7);
     drawText((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' ' + item.unit_of_measure, 350, y + 7, 7);
     drawText((Number(item.unit_price_paise) / 100).toFixed(2), 395, y + 7, 7);
-    drawText(item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%', 462, y + 7, 7);
+    if (Number(quotation.is_interstate) === 1) {
+      drawText(item.igst_rate_bps === null || item.igst_rate_bps === undefined ? '-' : 'I ' + (Number(item.igst_rate_bps) / 100).toFixed(2) + '%', 462, y + 7, 6.2);
+    } else {
+      drawText('C ' + (Number(item.cgst_rate_bps || 0) / 100).toFixed(2) + '%', 462, y + 4, 6.2);
+      drawText('S ' + (Number(item.sgst_rate_bps || 0) / 100).toFixed(2) + '%', 462, y + 14, 6.2);
+    }
     drawText((Number(item.total_amount_paise) / 100).toFixed(2), 505, y + 7, 7, true);
     drawLine(marginX, y + rowHeight, pageWidth - marginX, 0.35, rgb(0.78, 0.80, 0.83));
     y += rowHeight;
