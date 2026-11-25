@@ -640,7 +640,7 @@ export async function generateQuotationWordDocument(
   logoBytes: Uint8Array
 ): Promise<Uint8Array> {
   const enc = new TextEncoder();
-  const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const esc = (v: unknown) => Array.from(String(v ?? '')).filter(ch => { const cp = ch.codePointAt(0)!; return cp === 0x09 || cp === 0x0A || cp === 0x0D || (cp >= 0x20 && cp <= 0xD7FF) || (cp >= 0xE000 && cp <= 0xFFFD) || (cp >= 0x10000 && cp <= 0x10FFFF); }).join('').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   const money = (p: number) => 'INR ' + (Number(p || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const date = (v: string | null | undefined) => {
     if (!v) return '';
@@ -658,12 +658,12 @@ export async function generateQuotationWordDocument(
     '<w:p><w:pPr>' + (options.align ? '<w:jc w:val="' + options.align + '"/>' : '') + '<w:spacing w:after="' + (options.after ?? 80) + '"/>' +
     '</w:pPr>' + run(value, !!options.bold, options.color || '1F2933', options.size || 18) + '</w:p>';
   const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left') =>
-    '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/><w:shd w:fill="' + fill + '"/><w:tcMar><w:top w:w="70" w:type="dxa"/><w:start w:w="75" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:end w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>' +
-    '<w:p><w:pPr><w:jc w:val="' + align + '"/></w:pPr>' + content + '</w:p></w:tc>';
+    '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/><w:shd w:fill="' + fill + '"/><w:tcMar><w:top w:w="70" w:type="dxa"/><w:left w:w="75" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>' +
+    (content.trimStart().startsWith('<w:p>') ? content : '<w:p><w:pPr><w:jc w:val="' + align + '"/></w:pPr>' + content + '</w:p>') + '</w:tc>';
   const table = (rows: string[], widths: number[], borders = true) =>
     '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblLayout w:type="fixed"/>' +
     (borders ? '<w:tblBorders><w:top w:val="single" w:sz="5" w:color="AAB2BD"/><w:left w:val="single" w:sz="5" w:color="AAB2BD"/><w:bottom w:val="single" w:sz="5" w:color="AAB2BD"/><w:right w:val="single" w:sz="5" w:color="AAB2BD"/><w:insideH w:val="single" w:sz="4" w:color="D8DDE4"/><w:insideV w:val="single" w:sz="4" w:color="D8DDE4"/></w:tblBorders>' : '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>') +
-    '</w:tblPr>' + rows.join('') + '</w:tbl>';
+    '</w:tblPr><w:tblGrid>' + widths.map(width => '<w:gridCol w:w="' + width + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
   const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const seller = [
     settings.address_line1,
@@ -677,7 +677,7 @@ export async function generateQuotationWordDocument(
   const buyerCompany = quotation.buyer_company && norm(quotation.buyer_company) !== norm(quotation.buyer_name) ? quotation.buyer_company : '';
   const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
   const body: string[] = [];
-  body.push('<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2085120" cy="694944"/><wp:docPr id="1" name="BABA Enterprises Logo"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="baba-logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2085120" cy="694944"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>');
+  body.push('<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2085120" cy="694944"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="BABA Enterprises Logo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="baba-logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2085120" cy="694944"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>');
   seller.forEach(v => body.push(para(v, { size: 16, color: '24364B', after: 35 })));
   body.push(para('QUOTATION', { bold: true, color: '102F59', size: 34, after: 100 }));
   body.push(table([row([
@@ -745,11 +745,13 @@ export async function generateQuotationWordDocument(
   body.push(para(declaration,{size:14,after:100}));
   body.push(para('This is a computer-generated quotation.',{size:13,color:'68717C'}));
   const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="794" w:right="680" w:bottom="794" w:left="680" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>';
   const files: {name:string;data:Uint8Array}[] = [
-    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')},
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')},
     {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')},
     {name:'word/document.xml',data:enc.encode(documentXml)},
-    {name:'word/_rels/document.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/></Relationships>')},
+    {name:'word/_rels/document.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')},
+    {name:'word/styles.xml',data:enc.encode(stylesXml)},
     {name:'word/media/logo.png',data:logoBytes}
   ];
   const crcTable = new Uint32Array(256);
@@ -768,5 +770,23 @@ export async function generateQuotationWordDocument(
   }
   const centralBytes=join(central), localBytes=join(chunks);
   const end=join([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBytes.length),u32(localBytes.length),u16(0)]);
-  return join([localBytes,centralBytes,end]);
+  const archive = join([localBytes,centralBytes,end]);
+  // Validate the ZIP local-file records and CRCs before returning a DOCX payload.
+  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  let cursor = 0;
+  for (const file of files) {
+    if (view.getUint32(cursor, true) !== 0x04034b50) throw new Error('DOCX validation failed: invalid ZIP local-file header.');
+    const nameLength = view.getUint16(cursor + 26, true), extraLength = view.getUint16(cursor + 28, true);
+    const size = view.getUint32(cursor + 18, true), expectedCrc = view.getUint32(cursor + 14, true);
+    const name = new TextDecoder().decode(archive.subarray(cursor + 30, cursor + 30 + nameLength));
+    if (name !== file.name || size !== file.data.length) throw new Error('DOCX validation failed: ZIP entry name or size mismatch.');
+    const dataStart = cursor + 30 + nameLength + extraLength;
+    const data = archive.subarray(dataStart, dataStart + size);
+    if (crc32(data) !== expectedCrc) throw new Error('DOCX validation failed: ZIP entry CRC mismatch for ' + name + '.');
+    cursor = dataStart + size;
+  }
+  if (view.getUint32(cursor, true) !== 0x02014b50 || view.getUint32(localBytes.length + centralBytes.length, true) !== 0x06054b50) {
+    throw new Error('DOCX validation failed: ZIP central directory or end record is invalid.');
+  }
+  return archive;
 }
