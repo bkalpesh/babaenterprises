@@ -552,7 +552,7 @@ export const ApiService = {
       const safeNumber = (quotationNumber || id).replace(/[^a-zA-Z0-9._-]/g, '-');
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = `Quotation-${safeNumber}.doc`;
+      link.download = `Quotation-${safeNumber}.docx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
