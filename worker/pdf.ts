@@ -754,6 +754,107 @@ export async function generateQuotationWordDocument(
     {name:'word/styles.xml',data:enc.encode(stylesXml)},
     {name:'word/media/logo.png',data:logoBytes}
   ];
+  // Validate every XML part for well-formed markup, escaped entities and namespace bindings.
+  const validateXmlPart = (xml: string, partName: string) => {
+    const stack: string[] = [];
+    const namespaceStack: Record<string, string>[] = [{}];
+    const entityPattern = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);/g;
+    const checkEntities = (value: string) => {
+      if (value.replace(entityPattern, '').includes('&')) throw new Error('DOCX validation failed: invalid XML entity in ' + partName + '.');
+    };
+    let pos = 0;
+    while (pos < xml.length) {
+      if (xml[pos] !== '<') {
+        const next = xml.indexOf('<', pos);
+        const text = xml.slice(pos, next < 0 ? xml.length : next);
+        checkEntities(text);
+        if (text.includes(']]>')) throw new Error('DOCX validation failed: invalid XML character data in ' + partName + '.');
+        pos = next < 0 ? xml.length : next;
+        continue;
+      }
+      if (xml.startsWith('<?', pos)) {
+        const end = xml.indexOf('?>', pos + 2);
+        if (end < 0) throw new Error('DOCX validation failed: unterminated XML processing instruction in ' + partName + '.');
+        pos = end + 2;
+        continue;
+      }
+      if (xml.startsWith('<!--', pos)) {
+        const end = xml.indexOf('-->', pos + 4);
+        if (end < 0 || xml.slice(pos + 4, end).includes('--')) throw new Error('DOCX validation failed: malformed XML comment in ' + partName + '.');
+        pos = end + 3;
+        continue;
+      }
+      if (xml.startsWith('<![CDATA[', pos)) {
+        const end = xml.indexOf(']]>', pos + 9);
+        if (end < 0) throw new Error('DOCX validation failed: unterminated CDATA in ' + partName + '.');
+        pos = end + 3;
+        continue;
+      }
+      if (xml.startsWith('<!', pos)) throw new Error('DOCX validation failed: unsupported XML declaration in ' + partName + '.');
+      let end = pos + 1, quote = '';
+      for (; end < xml.length; end++) {
+        const ch = xml[end];
+        if (quote) { if (ch === quote) quote = ''; }
+        else if (ch === '"' || ch === "'") quote = ch;
+        else if (ch === '>') break;
+      }
+      if (end >= xml.length || quote) throw new Error('DOCX validation failed: unterminated XML tag in ' + partName + '.');
+      const raw = xml.slice(pos + 1, end);
+      const closing = raw.startsWith('/');
+      if (closing) {
+        const name = raw.slice(1).trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(name) || stack.pop() !== name) throw new Error('DOCX validation failed: mismatched XML closing tag in ' + partName + '.');
+        namespaceStack.pop();
+      } else {
+        const selfClosing = /\/\s*$/.test(raw);
+        const inner = selfClosing ? raw.replace(/\/\s*$/, '') : raw;
+        const nameMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)([\s\S]*)$/.exec(inner);
+        if (!nameMatch) throw new Error('DOCX validation failed: invalid XML element name in ' + partName + '.');
+        const name = nameMatch[1], rest = nameMatch[2];
+        const attrs: Record<string, string> = {};
+        let attrPos = 0;
+        while (attrPos < rest.length) {
+          while (/\s/.test(rest[attrPos] || '')) attrPos++;
+          if (attrPos >= rest.length) break;
+          const attrMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*("([^"]*)"|'([^']*)')/.exec(rest.slice(attrPos));
+          if (!attrMatch) throw new Error('DOCX validation failed: malformed XML attribute in ' + partName + '.');
+          const attrName = attrMatch[1], attrValue = attrMatch[3] ?? attrMatch[4] ?? '';
+          if (Object.prototype.hasOwnProperty.call(attrs, attrName) || attrValue.includes('<')) throw new Error('DOCX validation failed: duplicate or invalid XML attribute in ' + partName + '.');
+          checkEntities(attrValue);
+          attrs[attrName] = attrValue;
+          attrPos += attrMatch[0].length;
+        }
+        const ns = { ...namespaceStack[namespaceStack.length - 1] };
+        for (const [key, value] of Object.entries(attrs)) {
+          if (key === 'xmlns') ns[''] = value;
+          else if (key.startsWith('xmlns:')) ns[key.slice(6)] = value;
+        }
+        const checkQName = (qname: string, isAttribute = false) => {
+          const bits = qname.split(':');
+          if (bits.length > 2 || (bits.length === 2 && !ns[bits[0]]) || (bits.length === 1 && !isAttribute && !ns[''] && partName !== '[Content_Types].xml')) {
+            throw new Error('DOCX validation failed: unbound XML namespace prefix in ' + partName + '.');
+          }
+        };
+        checkQName(name);
+        for (const key of Object.keys(attrs)) if (key.includes(':') && !key.startsWith('xmlns:')) checkQName(key, true);
+        if (!selfClosing) { stack.push(name); namespaceStack.push(ns); }
+      }
+      pos = end + 1;
+    }
+    if (stack.length) throw new Error('DOCX validation failed: unclosed XML element in ' + partName + '.');
+  };
+  for (const file of files) {
+    if (file.name.endsWith('.xml') || file.name.endsWith('.rels')) validateXmlPart(new TextDecoder().decode(file.data), file.name);
+  }
+  const contentTypesXml = new TextDecoder().decode(files.find(file => file.name === '[Content_Types].xml')!.data);
+  const documentRelsXml = new TextDecoder().decode(files.find(file => file.name === 'word/_rels/document.xml.rels')!.data);
+  if (!contentTypesXml.includes('/word/document.xml') || !contentTypesXml.includes('/word/styles.xml') ||
+      !documentRelsXml.includes('Target="media/logo.png"') || !documentRelsXml.includes('Target="styles.xml"')) {
+    throw new Error('DOCX validation failed: required content types or document relationships are missing.');
+  }
+  if (logoBytes.length < 8 || logoBytes[0] !== 0x89 || logoBytes[1] !== 0x50 || logoBytes[2] !== 0x4E || logoBytes[3] !== 0x47) {
+    throw new Error('DOCX validation failed: embedded BABA logo is not a valid PNG image.');
+  }
   const crcTable = new Uint32Array(256);
   for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);crcTable[n]=c>>>0;}
   const crc32=(data:Uint8Array)=>{let c=0xFFFFFFFF;for(let i=0;i<data.length;i++)c=crcTable[(c^data[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
