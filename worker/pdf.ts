@@ -677,9 +677,9 @@ export async function generateQuotationWordDocument(
   const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left', borders = '') =>
     '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/>' +
     (fill !== 'FFFFFF' ? '<w:shd w:val="clear" w:color="auto" w:fill="' + fill + '"/>' : '') +
-    '<w:tcMar><w:top w:w="55" w:type="dxa"/><w:left w:w="65" w:type="dxa"/><w:bottom w:w="55" w:type="dxa"/><w:right w:w="65" w:type="dxa"/></w:tcMar>' +
+    '<w:tcMar><w:top w:w="' + (width >= 3590 && width <= 3591 ? 0 : 55) + '" w:type="dxa"/><w:left w:w="65" w:type="dxa"/><w:bottom w:w="' + (width >= 3590 && width <= 3591 ? 0 : 55) + '" w:type="dxa"/><w:right w:w="65" w:type="dxa"/></w:tcMar>' +
     (borders ? '<w:tcBorders>' + borders + '</w:tcBorders>' : '') + '</w:tcPr>' +
-    (content.trimStart().startsWith('<w:p') ? content : p(content,{align})) + '</w:tc>';
+    (content.trimStart().startsWith('<w:tbl') ? content + '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>' : content.trimStart().startsWith('<w:p') ? content : p(content,{align})) + '</w:tc>';
   const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const tbl = (rows: string[], widths: number[], borderColor = 'AAB2BD', borderSize = 4) =>
     '<w:tbl><w:tblPr><w:tblW w:w="' + widths.reduce((a,b)=>a+b,0) + '" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>' +
@@ -689,9 +689,9 @@ export async function generateQuotationWordDocument(
   const body: string[] = [];
   // Three-colour rule and thin frame reproduce the PDF's A4 stationery.
   body.push(tbl([row([
-    cell(p('',{size:2,after:0}),3591,'FF9933','left',borderNone),
-    cell(p('',{size:2,after:0}),3591,'FFFFFF','left',borderNone),
-    cell(p('',{size:2,after:0}),3590,'138808','left',borderNone)
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3591,'FF9933','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3591,'FFFFFF','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3590,'138808','left',borderNone)
   ])],[3591,3591,3590],'FFFFFF',0));
   const sellerContent = imagePara + seller.map(v => p(v,{size:18,color:'24364B',after:22})).join('');
   const docContent = p('QUOTATION',{bold:true,color:navy,size:38,after:90}) +
@@ -703,8 +703,9 @@ export async function generateQuotationWordDocument(
     cell(sellerContent,6463,'FFFFFF','left'),
     cell(docContent,4309,'F8FAFC','left',headerBorder)
   ])],[6463,4309],'0F172A',8));
+  body.push(tbl([row([cell(p('QUOTATION TO',{bold:true,color:navy,size:20,after:0}),10772,light)])],[10772],'FFFFFF',0));
   const buyerLeft = [
-    p('QUOTATION TO',{bold:true,color:navy,size:20,after:55}),
+
     p(quotation.buyer_name || '',{bold:true,size:19,after:35}),
     ...(buyerCompany ? [p(buyerCompany,{size:18,after:25})] : []),
     ...buyerAddress.map(v=>p(v,{size:18,after:20})),
@@ -725,6 +726,7 @@ export async function generateQuotationWordDocument(
   const headers = ['#','Description','HSN','Qty','Rate (INR)','GST %','Amount'];
   const widths = [431,4093,1077,1077,1400,1077,1617];
   const itemRows = [row(headers.map((h,i)=>cell(p(h,{bold:true,color:'FFFFFF',size:18,align:i===1?'left':'center',after:0}),widths[i],navy,i===1?'left':'center')))];
+  itemRows[0] = itemRows[0].replace('<w:tr>', '<w:tr><w:trPr><w:tblHeader/></w:trPr>');
   items.forEach((item,i)=>{
     const vals = [
       String(i+1),item.item_description,item.hsn_code || '-',
@@ -749,26 +751,25 @@ export async function generateQuotationWordDocument(
   }
   summary.push(['Total Tax:',money(quotation.total_tax_paise)]);
   if(Number(quotation.round_off_paise||0)!==0) summary.push(['Round Off:',money(quotation.round_off_paise)]);
-  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:18,after:0}),5925),cell(p(v[1],{bold:true,size:18,align:'right',after:0}),4847,'FFFFFF','right')]));
-  summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:20,after:0}),5925,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:20,align:'right',after:0}),4847,'E0E6ED','right')]));
-  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:18,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:true,size:18,after:0}),5925),cell('',4847)]) ],[5925,4847],'FFFFFF',0));
-  body.push(tbl(summaryRows,[5925,4847],'FFFFFF',0));
+  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:18,after:0}),2900),cell(p(v[1],{bold:true,size:18,align:'right',after:0}),1817,'FFFFFF','right')]));
+  summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:20,after:0}),2900,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:20,align:'right',after:0}),1817,'E0E6ED','right')]));
+  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:18,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:true,size:18,after:0}),5925),cell(tbl(summaryRows,[2900,1817],'FFFFFF',0),4847)])],[5925,4847],'FFFFFF',0));
   body.push(p('TERMS & CONDITIONS',{bold:true,color:navy,size:20,after:40,before:100}));
   body.push(p('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:18}));
   body.push(p('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:18}));
   if(quotation.notes) body.push(p('Notes: '+quotation.notes,{size:18}));
   body.push(tbl([row([
     cell(p('Customer Acceptance',{bold:true,color:navy,size:18,after:500}) + p('________________________________________',{size:18,after:0}),5386),
-    cell(p('For '+(settings.legal_name||'BABA ENTERPRISES'),{bold:true,color:navy,size:18,align:'center',after:500}) + p('Authorized Signatory',{size:18,align:'center'}),5386)
+    cell(p('For '+(settings.legal_name||'BABA ENTERPRISES'),{bold:true,color:navy,size:18,align:'center',after:500}) + p('________________________________________',{size:18,align:'center',after:20}) + p('Authorized Signatory',{size:18,align:'center'}),5386)
   ])],[5386,5386],'FFFFFF',0));
   const declaration='We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
   body.push(p('DECLARATION',{bold:true,color:navy,size:18,after:25,before:70}));
   body.push(p(declaration,{size:18,after:60}));
   body.push(p('This is a computer-generated quotation.',{size:18,color:muted,after:40}));
   body.push(tbl([row([
-    cell(p('',{size:2,after:0}),3591,'FF9933','left',borderNone),
-    cell(p('',{size:2,after:0}),3591,'FFFFFF','left',borderNone),
-    cell(p('',{size:2,after:0}),3590,'138808','left',borderNone)
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3591,'FF9933','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3591,'FFFFFF','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="65" w:lineRule="exact"/></w:pPr></w:p>',3590,'138808','left',borderNone)
   ])],[3591,3591,3590],'FFFFFF',0));
   const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="567" w:right="567" w:bottom="567" w:left="567" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
   const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>';
