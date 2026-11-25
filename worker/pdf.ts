@@ -602,7 +602,7 @@ export async function generateQuotationPDF(
     totalLine('SGST' + (sgstRateLabel ? ' (' + sgstRateLabel + '):' : ':'), money(quotation.sgst_amount_paise));
   }
   totalLine('Total Tax:', money(quotation.total_tax_paise));
-  if (hasRoundOff) totalLine('Round Off to the Quotation:', money(quotation.round_off_paise));
+  if (hasRoundOff) totalLine('Round Off:', money(quotation.round_off_paise));
   page.drawRectangle({ x: 345, y: pageHeight - y - 25, width: pageWidth - marginX - 345, height: 25, color: rgb(0.88, 0.90, 0.93) });
   drawText('GRAND TOTAL', 355, y + 7, 9, true, navy);
   drawText(money(quotation.total_amount_paise), 475, y + 7, 9, true, navy);
@@ -629,4 +629,120 @@ export async function generateQuotationPDF(
   declarationLines.forEach((line, index) => drawText(line, marginX + 5, y + 83 + index * 9, 7.5));
   drawFooter(pageNo);
   return await pdf.save();
+}
+
+
+/** Creates an editable Word-compatible HTML document (.doc) matching the quotation PDF content and branding. */
+export async function generateQuotationWordDocument(
+  settings: BusinessSettings,
+  quotation: DBQuotation,
+  items: DBQuotationItem[]
+): Promise<Uint8Array> {
+  const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char] || char);
+  const money = (paise: number) => 'INR ' + (Number(paise || 0) / 100).toLocaleString('en-IN', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const date = (value: string | null | undefined) => {
+    if (!value) return '';
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    return match ? match[3] + '/' + match[2] + '/' + match[1] : value;
+  };
+  const uniqueRateLabel = (rates: number[]) => {
+    const labels = [...new Set(rates.filter(rate => Number.isFinite(rate) && rate > 0)
+      .map(rate => (rate / 100).toFixed(2)))].sort((a, b) => Number(a) - Number(b));
+    return labels.length === 0 ? '' : labels.length === 1 ? labels[0] + '%' : 'Multiple rates';
+  };
+  const normalize = (value: string | null | undefined) =>
+    (value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
+  const logoUrl = 'https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1';
+  const logoResponse = await fetch(logoUrl);
+  if (!logoResponse.ok) throw new Error('BABA Enterprises logo could not be loaded for quotation Word document generation.');
+  const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < logoBytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...logoBytes.subarray(offset, Math.min(offset + 0x8000, logoBytes.length)));
+  }
+  const logoData = 'data:image/png;base64,' + btoa(binary);
+  const sellerLines = [
+    settings.address_line1,
+    [settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '),
+    settings.gstin ? 'GSTIN: ' + settings.gstin : '',
+    [settings.phone_primary, settings.phone_secondary].filter(Boolean).length
+      ? 'Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / ') : '',
+    settings.email || '',
+    settings.website_url ? 'Website: ' + settings.website_url : '',
+  ].filter(Boolean);
+  const buyerAddress = (quotation.buyer_address || 'Address not provided')
+    .split(/[,\n]+/).map(value => value.trim()).filter(Boolean);
+  const buyerLocation = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode]
+    .filter(Boolean).join(', ');
+  const buyerCompany = quotation.buyer_company && normalize(quotation.buyer_company) !== normalize(quotation.buyer_name)
+    ? quotation.buyer_company : '';
+  const itemRows = items.map((item, index) =>
+    '<tr><td class="center">' + (index + 1) + '</td><td><strong>' + esc(item.item_description) +
+    '</strong></td><td class="center">' + esc(item.hsn_code || '-') + '</td><td class="right">' +
+    esc((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 })) + ' ' +
+    esc(item.unit_of_measure) + '</td><td class="right">' + (Number(item.unit_price_paise) / 100).toFixed(2) +
+    '</td><td class="center">' + (item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%') +
+    '</td><td class="right"><strong>' + (Number(item.total_amount_paise) / 100).toFixed(2) + '</strong></td></tr>'
+  ).join('');
+  const summaryRows = [
+    '<tr><td>Subtotal (before discount):</td><td class="amount">' + money(quotation.subtotal_gross_paise) + '</td></tr>',
+    '<tr><td>Discount:</td><td class="amount">' + money(quotation.total_discount_paise) + '</td></tr>',
+    '<tr><td>Taxable Amount:</td><td class="amount">' + money(quotation.taxable_amount_paise) + '</td></tr>',
+  ];
+  if (Number(quotation.is_interstate) === 1) {
+    const rate = uniqueRateLabel(items.map(item => Number(item.igst_rate_bps || 0)));
+    summaryRows.push('<tr><td>IGST' + (rate ? ' (' + esc(rate) + ')' : '') + ':</td><td class="amount">' + money(quotation.igst_amount_paise) + '</td></tr>');
+  } else {
+    const cgstRate = uniqueRateLabel(items.map(item => Number(item.cgst_rate_bps || 0)));
+    const sgstRate = uniqueRateLabel(items.map(item => Number(item.sgst_rate_bps || 0)));
+    summaryRows.push('<tr><td>CGST' + (cgstRate ? ' (' + esc(cgstRate) + ')' : '') + ':</td><td class="amount">' + money(quotation.cgst_amount_paise) + '</td></tr>');
+    summaryRows.push('<tr><td>SGST' + (sgstRate ? ' (' + esc(sgstRate) + ')' : '') + ':</td><td class="amount">' + money(quotation.sgst_amount_paise) + '</td></tr>');
+  }
+  summaryRows.push('<tr><td>Total Tax:</td><td class="amount">' + money(quotation.total_tax_paise) + '</td></tr>');
+  if (Number(quotation.round_off_paise || 0) !== 0) {
+    summaryRows.push('<tr><td>Round Off:</td><td class="amount">' + money(quotation.round_off_paise) + '</td></tr>');
+  }
+  const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code]
+    .filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
+  const declaration = 'We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
+  const html = '<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">' +
+  '<head><meta charset="utf-8"><title>Quotation ' + esc(quotation.quotation_number || '') + '</title>' +
+  '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]>' +
+  '<style>@page{size:A4;margin:14mm 12mm}body{font-family:Arial,sans-serif;color:#1f2933;font-size:9pt}.sheet{border:1px solid #c7cbd1;padding:10px 12px 14px}' +
+  '.tricolor{height:4px;background:linear-gradient(to right,#f89933 33.33%,#fff 33.33%,#fff 66.66%,#13883d 66.66%);border:1px solid #ddd}' +
+  '.header{width:100%;border-collapse:collapse;margin:7px 0 12px}.header td{vertical-align:top}.logo{width:205px;max-height:68px;object-fit:contain}' +
+  '.seller{font-size:8pt;line-height:1.35}.titlebox{background:#f4f6f8;padding:10px;width:37%}.title{font-size:18pt;font-weight:bold;color:#102f59;margin-bottom:8px}' +
+  '.meta td{padding:2px 0;font-size:8pt}.rule{border-top:1px solid #102f59;margin:9px 0 12px}.section{background:#eef1f5;color:#102f59;font-weight:bold;padding:6px 8px}' +
+  '.buyer{width:100%;border-collapse:collapse;margin-bottom:12px}.buyer td{vertical-align:top;padding:4px 8px;font-size:8pt}.buyer .name{font-size:10pt;font-weight:bold}' +
+  '.items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:7.5pt}.items th{background:#102f59;color:white;padding:7px 4px;text-align:left}.items td{padding:7px 4px;border-bottom:1px solid #c7cbd1;vertical-align:top}.items tr:nth-child(even) td{background:#f8f9fb}' +
+  '.center{text-align:center}.right{text-align:right}.summary-wrap{width:100%;margin-top:14px;border-top:1px solid #102f59;padding-top:12px}.words{width:53%;vertical-align:top;font-size:8pt;color:#102f59;font-weight:bold}' +
+  '.summary{width:100%;border-collapse:collapse;font-size:8pt}.summary td{padding:3px 5px}.summary .amount{text-align:right;font-weight:bold}.grand td{background:#e0e6ed;color:#102f59;font-size:10pt;font-weight:bold;padding:7px 5px}' +
+  '.terms{border-top:1px solid #c7cbd1;margin-top:12px;padding-top:10px;font-size:8pt}.signatures{width:100%;margin-top:28px;font-size:8pt}.signatures td{width:50%;vertical-align:top}.signature-line{border-top:1px solid #555;margin-top:28px;padding-top:5px;text-align:center}.declaration{margin-top:24px;font-size:7.5pt;line-height:1.3}.footer{margin-top:24px;font-size:7pt;color:#68717c}</style></head><body>' +
+  '<div class="sheet"><div class="tricolor"></div><table class="header"><tr><td style="width:62%"><img class="logo" src="' + logoData + '"/><div class="seller">' +
+  sellerLines.map(line => '<div>' + esc(line) + '</div>').join('') + '</div></td><td class="titlebox"><div class="title">QUOTATION</div><table class="meta">' +
+  '<tr><td><b>Quotation No:</b></td><td>' + esc(quotation.quotation_number || 'DRAFT') + '</td></tr><tr><td><b>Date:</b></td><td>' + esc(date(quotation.quotation_date)) +
+  '</td></tr><tr><td><b>Valid Until:</b></td><td>' + esc(date(quotation.valid_until)) + '</td></tr></table></td></tr></table><div class="rule"></div>' +
+  '<div class="section">QUOTATION TO</div><table class="buyer"><tr><td style="width:55%"><div class="name">' + esc(quotation.buyer_name) + '</div>' +
+  (buyerCompany ? '<div>' + esc(buyerCompany) + '</div>' : '') + buyerAddress.map(line => '<div>' + esc(line) + '</div>').join('') +
+  (buyerLocation ? '<div>' + esc(buyerLocation) + '</div>' : '') + '</td><td><div>GSTIN: ' + esc(quotation.buyer_gstin || 'Unregistered') +
+  '</div><div>State: ' + esc(stateLabel) + '</div><div>Contact: ' + esc(quotation.buyer_contact_person || '-') + '</div><div>Phone: ' +
+  esc(quotation.buyer_phone || '-') + '</div><div>Email: ' + esc(quotation.buyer_email || '-') + '</div>' +
+  (quotation.ar_number ? '<div>AR Number: ' + esc(quotation.ar_number) + '</div>' : '') + '</td></tr></table>' +
+  '<table class="items"><thead><tr><th style="width:4%">#</th><th style="width:37%">Description</th><th style="width:10%">HSN</th><th style="width:12%">Qty</th>' +
+  '<th style="width:12%">Rate (INR)</th><th style="width:9%">GST %</th><th style="width:16%">Amount</th></tr></thead><tbody>' + itemRows + '</tbody></table>' +
+  '<table class="summary-wrap"><tr><td class="words"><div>Amount Chargeable (in words):</div><div style="margin-top:8px;color:#1f2933;font-weight:normal">' +
+  esc(numberToWords(Number(quotation.total_amount_paise || 0))) + '</div></td><td><table class="summary">' + summaryRows.join('') +
+  '<tr class="grand"><td>GRAND TOTAL</td><td class="amount">' + money(quotation.total_amount_paise) + '</td></tr></table></td></tr></table>' +
+  '<div class="terms"><b style="color:#102f59">TERMS &amp; CONDITIONS</b><div style="margin-top:7px">Payment Terms: ' +
+  esc(quotation.payment_terms || settings.default_payment_terms || 'As mutually agreed') + '</div><div>Delivery Terms: ' +
+  esc(quotation.delivery_terms || 'As mutually agreed') + '</div>' + (quotation.notes ? '<div>Notes: ' + esc(quotation.notes) + '</div>' : '') +
+  '</div><table class="signatures"><tr><td><b style="color:#102f59">Customer Acceptance</b><div class="signature-line">&nbsp;</div></td><td><b style="color:#102f59">For ' +
+  esc(settings.legal_name || 'BABA ENTERPRISES') + '</b><div class="signature-line">Authorized Signatory</div></td></tr></table>' +
+  '<div class="declaration"><b style="color:#102f59">DECLARATION</b><div style="margin-top:6px">' + esc(declaration) +
+  '</div></div><div class="footer">This is a computer-generated quotation.</div><div class="tricolor" style="margin-top:8px"></div></div></body></html>';
+  return new TextEncoder().encode(html);
 }
