@@ -297,7 +297,8 @@ export function generateInvoiceHTML(
                 <div style="font-size: 8px; color: #64748b;">@${(it.cgst_rate_bps / 100)}%</div>
               </td>
               <td class="text-right">
-                <div>${(it.sgst_amount_paise / 100).toFixed(2)}</div>                <div style="font-size: 8px; color: #64748b;">@${(it.sgst_rate_bps / 100)}%</div>
+                <div>${(it.sgst_amount_paise / 100).toFixed(2)}</div>
+                <div style="font-size: 8px; color: #64748b;">@${(it.sgst_rate_bps / 100)}%</div>
               </td>
             ` : `
               <td class="text-right">
@@ -596,7 +597,8 @@ export async function generateQuotationPDF(
     totalLine('IGST' + (igstRateLabel ? ' (' + igstRateLabel + '):' : ':'), money(quotation.igst_amount_paise));
   } else {
     const cgstRateLabel = uniqueRateLabels(items.map(item => Number(item.cgst_rate_bps || 0)));
-    const sgstRateLabel = uniqueRateLabels(items.map(item => Number(item.sgst_rate_bps || 0)));    totalLine('CGST' + (cgstRateLabel ? ' (' + cgstRateLabel + '):' : ':'), money(quotation.cgst_amount_paise));
+    const sgstRateLabel = uniqueRateLabels(items.map(item => Number(item.sgst_rate_bps || 0)));
+    totalLine('CGST' + (cgstRateLabel ? ' (' + cgstRateLabel + '):' : ':'), money(quotation.cgst_amount_paise));
     totalLine('SGST' + (sgstRateLabel ? ' (' + sgstRateLabel + '):' : ':'), money(quotation.sgst_amount_paise));
   }
   totalLine('Total Tax:', money(quotation.total_tax_paise));
@@ -914,5 +916,3 @@ export async function generateQuotationWordDocument(
   if (view.getUint32(cursor, true) !== 0x02014b50 || view.getUint32(localBytes.length + centralBytes.length, true) !== 0x06054b50) {
     throw new Error('DOCX validation failed: ZIP central directory or end record is invalid.');
   }
-  return archive;
-}
