@@ -1235,13 +1235,17 @@ export const worker = {
           'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY line_number ASC'
         ).bind(quoteId).all<DBQuotationItem>();
         if (!itemRows.results?.length) return errorResponse('Quotation has no line items.', 422);
-        const documentBytes = await generateQuotationWordDocument(settings, quote, itemRows.results);
-        const filename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.doc`;
+        if (!env.ASSETS) return errorResponse('Static asset service is unavailable; embedded quotation logo cannot be loaded.', 503);
+        const logoResponse = await env.ASSETS.fetch(new Request(new URL('/assets/baba_enterprises_logo_horizontal.png', url.origin)));
+        if (!logoResponse.ok) return errorResponse('BABA Enterprises logo asset could not be loaded for the Word document.', 503);
+        const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+        const documentBytes = await generateQuotationWordDocument(settings, quote, itemRows.results, logoBytes);
+        const filename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.docx`;
         const documentBuffer = new ArrayBuffer(documentBytes.byteLength);
         new Uint8Array(documentBuffer).set(documentBytes);
         return new Response(documentBuffer, {
           headers: {
-            'Content-Type': 'application/msword; charset=utf-8',
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'Content-Disposition': `attachment; filename="${filename}"`,
             'Cache-Control': 'private, no-store',
             'X-Content-Type-Options': 'nosniff',
