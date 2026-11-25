@@ -636,107 +636,137 @@ export async function generateQuotationPDF(
 export async function generateQuotationWordDocument(
   settings: BusinessSettings,
   quotation: DBQuotation,
-  items: DBQuotationItem[]
+  items: DBQuotationItem[],
+  logoBytes: Uint8Array
 ): Promise<Uint8Array> {
-  const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] || char);
-  const money = (paise: number) => 'INR ' + (Number(paise || 0) / 100).toLocaleString('en-IN', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
-  const date = (value: string | null | undefined) => {
-    if (!value) return '';
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-    return match ? match[3] + '/' + match[2] + '/' + match[1] : value;
+  const enc = new TextEncoder();
+  const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const money = (p: number) => 'INR ' + (Number(p || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const date = (v: string | null | undefined) => {
+    if (!v) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : v;
   };
-  const uniqueRateLabel = (rates: number[]) => {
-    const labels = [...new Set(rates.filter(rate => Number.isFinite(rate) && rate > 0)
-      .map(rate => (rate / 100).toFixed(2)))].sort((a, b) => Number(a) - Number(b));
-    return labels.length === 0 ? '' : labels.length === 1 ? labels[0] + '%' : 'Multiple rates';
+  const norm = (v: string | null | undefined) => (v || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
+  const rates = (values: number[]) => {
+    const unique = [...new Set(values.filter(v => Number.isFinite(v) && v > 0).map(v => (v / 100).toFixed(2)))].sort((a,b) => Number(a)-Number(b));
+    return unique.length === 0 ? '' : unique.length === 1 ? unique[0] + '%' : 'Multiple rates';
   };
-  const normalize = (value: string | null | undefined) =>
-    (value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
-  // Microsoft Word's HTML import does not reliably render data: URI images.
-  // Use the public direct-download image URL so Word can retrieve the original PNG.
-  const logoData = 'https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1';
-  const sellerLines = [
+  const run = (value: unknown, bold = false, color = '1F2933', size = 18) =>
+    '<w:r><w:rPr>' + (bold ? '<w:b/>' : '') + '<w:color w:val="' + color + '"/><w:sz w:val="' + size + '"/></w:rPr><w:t xml:space="preserve">' + esc(value) + '</w:t></w:r>';
+  const para = (value: unknown, options: { bold?: boolean; color?: string; size?: number; align?: string; after?: number } = {}) =>
+    '<w:p><w:pPr>' + (options.align ? '<w:jc w:val="' + options.align + '"/>' : '') + '<w:spacing w:after="' + (options.after ?? 80) + '"/>' +
+    '</w:pPr>' + run(value, !!options.bold, options.color || '1F2933', options.size || 18) + '</w:p>';
+  const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left') =>
+    '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/><w:shd w:fill="' + fill + '"/><w:tcMar><w:top w:w="70" w:type="dxa"/><w:start w:w="75" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:end w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>' +
+    '<w:p><w:pPr><w:jc w:val="' + align + '"/></w:pPr>' + content + '</w:p></w:tc>';
+  const table = (rows: string[], widths: number[], borders = true) =>
+    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblLayout w:type="fixed"/>' +
+    (borders ? '<w:tblBorders><w:top w:val="single" w:sz="5" w:color="AAB2BD"/><w:left w:val="single" w:sz="5" w:color="AAB2BD"/><w:bottom w:val="single" w:sz="5" w:color="AAB2BD"/><w:right w:val="single" w:sz="5" w:color="AAB2BD"/><w:insideH w:val="single" w:sz="4" w:color="D8DDE4"/><w:insideV w:val="single" w:sz="4" w:color="D8DDE4"/></w:tblBorders>' : '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>') +
+    '</w:tblPr>' + rows.join('') + '</w:tbl>';
+  const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
+  const seller = [
     settings.address_line1,
     [settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '),
     settings.gstin ? 'GSTIN: ' + settings.gstin : '',
-    [settings.phone_primary, settings.phone_secondary].filter(Boolean).length
-      ? 'Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / ') : '',
+    [settings.phone_primary, settings.phone_secondary].filter(Boolean).length ? 'Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / ') : '',
     settings.email || '',
-    settings.website_url ? 'Website: ' + settings.website_url : '',
+    settings.website_url ? 'Website: ' + settings.website_url : ''
   ].filter(Boolean);
-  const buyerAddress = (quotation.buyer_address || 'Address not provided')
-    .split(/[,\n]+/).map(value => value.trim()).filter(Boolean);
-  const buyerLocation = [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode]
-    .filter(Boolean).join(', ');
-  const buyerCompany = quotation.buyer_company && normalize(quotation.buyer_company) !== normalize(quotation.buyer_name)
-    ? quotation.buyer_company : '';
-  const itemRows = items.map((item, index) =>
-    '<tr><td class="center">' + (index + 1) + '</td><td><strong>' + esc(item.item_description) +
-    '</strong></td><td class="center">' + esc(item.hsn_code || '-') + '</td><td class="right">' +
-    esc((Number(item.quantity_microunits) / 1000000).toLocaleString('en-IN', { maximumFractionDigits: 3 })) + ' ' +
-    esc(item.unit_of_measure) + '</td><td class="right">' + (Number(item.unit_price_paise) / 100).toFixed(2) +
-    '</td><td class="center">' + (item.gst_rate_bps === null ? '-' : (Number(item.gst_rate_bps) / 100).toFixed(2) + '%') +
-    '</td><td class="right"><strong>' + (Number(item.total_amount_paise) / 100).toFixed(2) + '</strong></td></tr>'
-  ).join('');
-  const summaryRows = [
-    '<tr><td>Subtotal (before discount):</td><td class="amount">' + money(quotation.subtotal_gross_paise) + '</td></tr>',
-    '<tr><td>Discount:</td><td class="amount">' + money(quotation.total_discount_paise) + '</td></tr>',
-    '<tr><td>Taxable Amount:</td><td class="amount">' + money(quotation.taxable_amount_paise) + '</td></tr>',
+  const buyerAddress = (quotation.buyer_address || 'Address not provided').split(/[,\\n]+/).map(v => v.trim()).filter(Boolean);
+  const buyerCompany = quotation.buyer_company && norm(quotation.buyer_company) !== norm(quotation.buyer_name) ? quotation.buyer_company : '';
+  const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
+  const body: string[] = [];
+  body.push('<w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2085120" cy="694944"/><wp:docPr id="1" name="BABA Enterprises Logo"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="baba-logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2085120" cy="694944"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>');
+  seller.forEach(v => body.push(para(v, { size: 16, color: '24364B', after: 35 })));
+  body.push(para('QUOTATION', { bold: true, color: '102F59', size: 34, after: 100 }));
+  body.push(table([row([
+    cell(run('Quotation No: ', true) + run(quotation.quotation_number || 'DRAFT'), 4700),
+    cell(run('Date: ', true) + run(date(quotation.quotation_date)), 4700)
+  ]), row([
+    cell(run('Valid Until: ', true) + run(date(quotation.valid_until)), 4700),
+    cell(run('Currency: ', true) + run(quotation.currency || 'INR'), 4700)
+  ])], [4700,4700]));
+  body.push(para('QUOTATION TO', { bold: true, color: 'FFFFFF', size: 20, after: 60 }));
+  const buyerLeft = [quotation.buyer_name, buyerCompany, ...buyerAddress, [quotation.buyer_city, quotation.buyer_state_name, quotation.buyer_pincode].filter(Boolean).join(', ')].filter(Boolean);
+  const buyerRight = [
+    'GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'),
+    'State: ' + stateLabel,
+    'Contact: ' + (quotation.buyer_contact_person || '-'),
+    'Phone: ' + (quotation.buyer_phone || '-'),
+    'Email: ' + (quotation.buyer_email || '-'),
+    quotation.ar_number ? 'AR Number: ' + quotation.ar_number : ''
+  ].filter(Boolean);
+  body.push(table([row([
+    cell(buyerLeft.map((v,i)=>para(v,{bold:i===0,size:i===0?20:16,after:35})).join(''), 5000),
+    cell(buyerRight.map(v=>para(v,{size:16,after:35})).join(''), 4400)
+  ])], [5000,4400]));
+  const headers = ['#','Description','HSN','Qty','Rate (INR)','GST %','Amount'];
+  const widths = [420,3300,850,1050,1050,850,1780];
+  const itemRows = [row(headers.map((h,i)=>cell(run(h,true,'FFFFFF',15),widths[i],'102F59',i===1?'left':'center')))];
+  items.forEach((item,i)=>{
+    const values = [
+      String(i+1), item.item_description, item.hsn_code || '-',
+      (Number(item.quantity_microunits)/1000000).toLocaleString('en-IN',{maximumFractionDigits:3})+' '+item.unit_of_measure,
+      (Number(item.unit_price_paise)/100).toFixed(2),
+      item.gst_rate_bps===null?'-':(Number(item.gst_rate_bps)/100).toFixed(2)+'%',
+      (Number(item.total_amount_paise)/100).toFixed(2)
+    ];
+    itemRows.push(row(values.map((v,j)=>cell(run(v,j===6,'1F2933',15),widths[j],i%2?'F4F6F8':'FFFFFF',j===1?'left':(j===0||j===2||j===5?'center':'right')))));
+  });
+  body.push(table(itemRows,widths));
+  const summary: string[] = [
+    ['Subtotal (before discount):',money(quotation.subtotal_gross_paise)],
+    ['Discount:',money(quotation.total_discount_paise)],
+    ['Taxable Amount:',money(quotation.taxable_amount_paise)]
   ];
-  if (Number(quotation.is_interstate) === 1) {
-    const rate = uniqueRateLabel(items.map(item => Number(item.igst_rate_bps || 0)));
-    summaryRows.push('<tr><td>IGST' + (rate ? ' (' + esc(rate) + ')' : '') + ':</td><td class="amount">' + money(quotation.igst_amount_paise) + '</td></tr>');
-  } else {
-    const cgstRate = uniqueRateLabel(items.map(item => Number(item.cgst_rate_bps || 0)));
-    const sgstRate = uniqueRateLabel(items.map(item => Number(item.sgst_rate_bps || 0)));
-    summaryRows.push('<tr><td>CGST' + (cgstRate ? ' (' + esc(cgstRate) + ')' : '') + ':</td><td class="amount">' + money(quotation.cgst_amount_paise) + '</td></tr>');
-    summaryRows.push('<tr><td>SGST' + (sgstRate ? ' (' + esc(sgstRate) + ')' : '') + ':</td><td class="amount">' + money(quotation.sgst_amount_paise) + '</td></tr>');
+  if(Number(quotation.is_interstate)===1) summary.push(['IGST'+(rates(items.map(i=>Number(i.igst_rate_bps||0)))?' ('+rates(items.map(i=>Number(i.igst_rate_bps||0)))+')':'' )+':',money(quotation.igst_amount_paise)]);
+  else {
+    const cr=rates(items.map(i=>Number(i.cgst_rate_bps||0))), sr=rates(items.map(i=>Number(i.sgst_rate_bps||0)));
+    summary.push(['CGST'+(cr?' ('+cr+')':'')+':',money(quotation.cgst_amount_paise)]);
+    summary.push(['SGST'+(sr?' ('+sr+')':'')+':',money(quotation.sgst_amount_paise)]);
   }
-  summaryRows.push('<tr><td>Total Tax:</td><td class="amount">' + money(quotation.total_tax_paise) + '</td></tr>');
-  if (Number(quotation.round_off_paise || 0) !== 0) {
-    summaryRows.push('<tr><td>Round Off:</td><td class="amount">' + money(quotation.round_off_paise) + '</td></tr>');
+  summary.push(['Total Tax:',money(quotation.total_tax_paise)]);
+  if(Number(quotation.round_off_paise||0)!==0) summary.push(['Round Off:',money(quotation.round_off_paise)]);
+  const summaryRows = summary.map(v=>row([cell(run(v[0],true,'1F2933',16),5100,'FFFFFF'),cell(run(v[1],true,'1F2933',16),3000,'FFFFFF','right')]));
+  summaryRows.push(row([cell(run('GRAND TOTAL',true,'102F59',20),5100,'E0E6ED'),cell(run(money(quotation.total_amount_paise),true,'102F59',20),3000,'E0E6ED','right')]));
+  body.push(para('Amount Chargeable (in words):', {bold:true,color:'102F59',size:16,after:40}));
+  body.push(para(numberToWords(Number(quotation.total_amount_paise||0)),{size:16,after:100}));
+  body.push(table(summaryRows,[5100,3000]));
+  body.push(para('TERMS & CONDITIONS',{bold:true,color:'102F59',size:18,after:50}));
+  body.push(para('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:16}));
+  body.push(para('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:16}));
+  if(quotation.notes) body.push(para('Notes: '+quotation.notes,{size:16}));
+  body.push(para('Customer Acceptance',{bold:true,color:'102F59',size:16,after:500}));
+  body.push(para('__________________________________                         For '+(settings.legal_name||'BABA ENTERPRISES'),{size:16,after:50}));
+  body.push(para('                                                                                           Authorized Signatory',{size:16,after:180}));
+  const declaration='We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
+  body.push(para('DECLARATION',{bold:true,color:'102F59',size:16,after:45}));
+  body.push(para(declaration,{size:14,after:100}));
+  body.push(para('This is a computer-generated quotation.',{size:13,color:'68717C'}));
+  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="794" w:right="680" w:bottom="794" w:left="680" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const files: {name:string;data:Uint8Array}[] = [
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')},
+    {name:'word/document.xml',data:enc.encode(documentXml)},
+    {name:'word/_rels/document.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/></Relationships>')},
+    {name:'word/media/logo.png',data:logoBytes}
+  ];
+  const crcTable = new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);crcTable[n]=c>>>0;}
+  const crc32=(data:Uint8Array)=>{let c=0xFFFFFFFF;for(let i=0;i<data.length;i++)c=crcTable[(c^data[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+  const chunks:Uint8Array[]=[]; const central:Uint8Array[]=[]; let offset=0;
+  const u16=(v:number)=>{const a=new Uint8Array(2);new DataView(a.buffer).setUint16(0,v,true);return a;};
+  const u32=(v:number)=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0,true);return a;};
+  const join=(parts:Uint8Array[])=>{const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){out.set(p,at);at+=p.length;}return out;};
+  for(const file of files){
+    const name=enc.encode(file.name), data=file.data, crc=crc32(data);
+    const local=join([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name]);
+    chunks.push(local,data);
+    const dir=join([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
+    central.push(dir);offset+=local.length+data.length;
   }
-  const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code]
-    .filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
-  const declaration = 'We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
-  const html = '<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">' +
-  '<head><meta charset="utf-8"><title>Quotation ' + esc(quotation.quotation_number || '') + '</title>' +
-  '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]>' +
-  '<style>@page{size:A4;margin:14mm 12mm}body{font-family:Arial,sans-serif;color:#1f2933;font-size:9pt}.sheet{border:1px solid #c7cbd1;padding:10px 12px 14px}' +
-  '.tricolor{height:4px;background:linear-gradient(to right,#f89933 33.33%,#fff 33.33%,#fff 66.66%,#13883d 66.66%);border:1px solid #ddd}' +
-  '.header{width:100%;border-collapse:collapse;margin:7px 0 12px}.header td{vertical-align:top}.logo{width:205px;max-height:68px;object-fit:contain}' +
-  '.seller{font-size:8pt;line-height:1.35}.titlebox{background:#f4f6f8;padding:10px;width:37%}.title{font-size:18pt;font-weight:bold;color:#102f59;margin-bottom:8px}' +
-  '.meta td{padding:2px 0;font-size:8pt}.rule{border-top:1px solid #102f59;margin:9px 0 12px}.section{background:#eef1f5;color:#102f59;font-weight:bold;padding:6px 8px}' +
-  '.buyer{width:100%;border-collapse:collapse;margin-bottom:12px}.buyer td{vertical-align:top;padding:4px 8px;font-size:8pt}.buyer .name{font-size:10pt;font-weight:bold}' +
-  '.items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:7.5pt}.items th{background:#102f59;color:white;padding:7px 4px;text-align:left}.items td{padding:7px 4px;border-bottom:1px solid #c7cbd1;vertical-align:top}.items tr:nth-child(even) td{background:#f8f9fb}' +
-  '.center{text-align:center}.right{text-align:right}.summary-wrap{width:100%;margin-top:14px;border-top:1px solid #102f59;padding-top:12px}.words{width:53%;vertical-align:top;font-size:8pt;color:#102f59;font-weight:bold}' +
-  '.summary{width:100%;border-collapse:collapse;font-size:8pt}.summary td{padding:3px 5px}.summary .amount{text-align:right;font-weight:bold}.grand td{background:#e0e6ed;color:#102f59;font-size:10pt;font-weight:bold;padding:7px 5px}' +
-  '.terms{border-top:1px solid #c7cbd1;margin-top:12px;padding-top:10px;font-size:8pt}.signatures{width:100%;margin-top:28px;font-size:8pt}.signatures td{width:50%;vertical-align:top}.signature-line{border-top:1px solid #555;margin-top:28px;padding-top:5px;text-align:center}.declaration{margin-top:24px;font-size:7.5pt;line-height:1.3}.footer{margin-top:24px;font-size:7pt;color:#68717c}</style></head><body>' +
-  '<div class="sheet"><div class="tricolor"></div><table class="header"><tr><td style="width:62%"><img class="logo" src="' + logoData + '"/><div class="seller">' +
-  sellerLines.map(line => '<div>' + esc(line) + '</div>').join('') + '</div></td><td class="titlebox"><div class="title">QUOTATION</div><table class="meta">' +
-  '<tr><td><b>Quotation No:</b></td><td>' + esc(quotation.quotation_number || 'DRAFT') + '</td></tr><tr><td><b>Date:</b></td><td>' + esc(date(quotation.quotation_date)) +
-  '</td></tr><tr><td><b>Valid Until:</b></td><td>' + esc(date(quotation.valid_until)) + '</td></tr></table></td></tr></table><div class="rule"></div>' +
-  '<div class="section">QUOTATION TO</div><table class="buyer"><tr><td style="width:55%"><div class="name">' + esc(quotation.buyer_name) + '</div>' +
-  (buyerCompany ? '<div>' + esc(buyerCompany) + '</div>' : '') + buyerAddress.map(line => '<div>' + esc(line) + '</div>').join('') +
-  (buyerLocation ? '<div>' + esc(buyerLocation) + '</div>' : '') + '</td><td><div>GSTIN: ' + esc(quotation.buyer_gstin || 'Unregistered') +
-  '</div><div>State: ' + esc(stateLabel) + '</div><div>Contact: ' + esc(quotation.buyer_contact_person || '-') + '</div><div>Phone: ' +
-  esc(quotation.buyer_phone || '-') + '</div><div>Email: ' + esc(quotation.buyer_email || '-') + '</div>' +
-  (quotation.ar_number ? '<div>AR Number: ' + esc(quotation.ar_number) + '</div>' : '') + '</td></tr></table>' +
-  '<table class="items"><thead><tr><th style="width:4%">#</th><th style="width:37%">Description</th><th style="width:10%">HSN</th><th style="width:12%">Qty</th>' +
-  '<th style="width:12%">Rate (INR)</th><th style="width:9%">GST %</th><th style="width:16%">Amount</th></tr></thead><tbody>' + itemRows + '</tbody></table>' +
-  '<table class="summary-wrap"><tr><td class="words"><div>Amount Chargeable (in words):</div><div style="margin-top:8px;color:#1f2933;font-weight:normal">' +
-  esc(numberToWords(Number(quotation.total_amount_paise || 0))) + '</div></td><td><table class="summary">' + summaryRows.join('') +
-  '<tr class="grand"><td>GRAND TOTAL</td><td class="amount">' + money(quotation.total_amount_paise) + '</td></tr></table></td></tr></table>' +
-  '<div class="terms"><b style="color:#102f59">TERMS &amp; CONDITIONS</b><div style="margin-top:7px">Payment Terms: ' +
-  esc(quotation.payment_terms || settings.default_payment_terms || 'As mutually agreed') + '</div><div>Delivery Terms: ' +
-  esc(quotation.delivery_terms || 'As mutually agreed') + '</div>' + (quotation.notes ? '<div>Notes: ' + esc(quotation.notes) + '</div>' : '') +
-  '</div><table class="signatures"><tr><td><b style="color:#102f59">Customer Acceptance</b><div class="signature-line">&nbsp;</div></td><td><b style="color:#102f59">For ' +
-  esc(settings.legal_name || 'BABA ENTERPRISES') + '</b><div class="signature-line">Authorized Signatory</div></td></tr></table>' +
-  '<div class="declaration"><b style="color:#102f59">DECLARATION</b><div style="margin-top:6px">' + esc(declaration) +
-  '</div></div><div class="footer">This is a computer-generated quotation.</div><div class="tricolor" style="margin-top:8px"></div></div></body></html>';
-  return new TextEncoder().encode(html);
+  const centralBytes=join(central), localBytes=join(chunks);
+  const end=join([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBytes.length),u32(localBytes.length),u16(0)]);
+  return join([localBytes,centralBytes,end]);
 }
