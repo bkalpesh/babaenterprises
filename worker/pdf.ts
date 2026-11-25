@@ -655,15 +655,15 @@ export async function generateQuotationWordDocument(
   const run = (value: unknown, bold = false, color = '1F2933', size = 18) =>
     '<w:r><w:rPr>' + (bold ? '<w:b/>' : '') + '<w:color w:val="' + color + '"/><w:sz w:val="' + size + '"/></w:rPr><w:t xml:space="preserve">' + esc(value) + '</w:t></w:r>';
   const para = (value: unknown, options: { bold?: boolean; color?: string; size?: number; align?: string; after?: number } = {}) =>
-    '<w:p><w:pPr>' + (options.align ? '<w:jc w:val="' + options.align + '"/>' : '') + '<w:spacing w:after="' + (options.after ?? 80) + '"/>' +
+    '<w:p><w:pPr><w:spacing w:after="' + (options.after ?? 80) + '"/>' + (options.align ? '<w:jc w:val="' + options.align + '"/>' : '') +
     '</w:pPr>' + run(value, !!options.bold, options.color || '1F2933', options.size || 18) + '</w:p>';
   const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left') =>
     '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/><w:shd w:fill="' + fill + '"/><w:tcMar><w:top w:w="70" w:type="dxa"/><w:left w:w="75" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>' +
     (content.trimStart().startsWith('<w:p>') ? content : '<w:p><w:pPr><w:jc w:val="' + align + '"/></w:pPr>' + content + '</w:p>') + '</w:tc>';
   const table = (rows: string[], widths: number[], borders = true) =>
-    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblLayout w:type="fixed"/>' +
+    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>' +
     (borders ? '<w:tblBorders><w:top w:val="single" w:sz="5" w:color="AAB2BD"/><w:left w:val="single" w:sz="5" w:color="AAB2BD"/><w:bottom w:val="single" w:sz="5" w:color="AAB2BD"/><w:right w:val="single" w:sz="5" w:color="AAB2BD"/><w:insideH w:val="single" w:sz="4" w:color="D8DDE4"/><w:insideV w:val="single" w:sz="4" w:color="D8DDE4"/></w:tblBorders>' : '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>') +
-    '</w:tblPr><w:tblGrid>' + widths.map(width => '<w:gridCol w:w="' + width + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
+    '<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + widths.map(width => '<w:gridCol w:w="' + width + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
   const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const seller = [
     settings.address_line1,
