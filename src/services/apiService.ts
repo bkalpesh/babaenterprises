@@ -535,6 +535,34 @@ export const ApiService = {
     }
   },
 
+  async downloadQuotationWord(id: string, quotationNumber?: string | null): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/quotations/${encodeURIComponent(id)}/word`, {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        return { success: false, error: data.error || `Word document request failed (HTTP ${res.status}).` };
+      }
+      const blob = await res.blob();
+      if (!blob.size || !/application\/msword|application\/octet-stream/i.test(blob.type)) {
+        return { success: false, error: 'The server did not return a Word document.' };
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const safeNumber = (quotationNumber || id).replace(/[^a-zA-Z0-9._-]/g, '-');
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `Quotation-${safeNumber}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Unable to download quotation Word document.' };
+    }
+  },
+
   async createQuotation(payload: any): Promise<any> {
     const res = await fetch(`${API_BASE}/quotations`, {
       method: 'POST',
