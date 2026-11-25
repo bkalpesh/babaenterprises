@@ -686,7 +686,7 @@ export async function generateQuotationWordDocument(
   const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const tbl = (rows: string[], widths: number[], borderColor = 'AAB2BD', borderSize = 4) =>
     '<w:tbl><w:tblPr><w:tblW w:w="' + widths.reduce((a,b)=>a+b,0) + '" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>' +
-    '<w:tblBorders><w:top w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:left w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:bottom w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:right w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:insideH w:val="' + (borderSize ? 'single' : 'nil') + '" w:sz="3" w:color="D8DDE4"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' +
+    '<w:tblBorders><w:top w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:left w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:bottom w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:right w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:insideH w:val="' + (borderSize ? 'single' : 'nil') + '" w:sz="3" w:color="D8DDE4"/><w:insideV w:val="' + (borderSize ? 'single' : 'nil') + '" w:sz="4" w:color="C7CBD1"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' +
     widths.map(w => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
   const borderNone = '<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>';
   const body: string[] = [];
@@ -706,7 +706,7 @@ export async function generateQuotationWordDocument(
     cell(sellerContent,6679,'FFFFFF','left'),
     cell(docContent,4093,'F8FAFC','left',headerBorder)
   ])],[6679,4093],'0F172A',8));
-  body.push(tbl([row([cell(p('QUOTATION TO',{bold:true,color:navy,size:20,after:60}),10772,light)])],[10772],'FFFFFF',0));
+  body.push(tbl([row([cell(p('QUOTATION TO',{bold:true,color:navy,size:20,after:60}),10772,light)])],[10772],'C7CBD1',4));
   const buyerLeft = [
 
     p(quotation.buyer_name || '',{bold:true,size:19,after:35}),
@@ -758,7 +758,7 @@ export async function generateQuotationWordDocument(
   if(Number(quotation.round_off_paise||0)!==0) summary.push(['Round Off:',money(quotation.round_off_paise)]);
   const summaryRows = summary.map(v=>row([cell(p(v[0],{size:18,after:0}),2900),cell(p(v[1],{bold:true,size:18,align:'right',after:0}),1817,'FFFFFF','right')]));
   summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:20,after:0}),2900,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:20,align:'right',after:0}),1817,'E0E6ED','right')]));
-  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:18,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:false,size:18,after:0}),5925),cell(tbl(summaryRows,[2900,1817],'FFFFFF',0),4847)])],[5925,4847],'FFFFFF',0));
+  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:18,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:false,size:18,after:0}),5925),cell(tbl(summaryRows,[2900,1817],'C7CBD1',4),4847)])],[5925,4847],'C7CBD1',4));
   body.push(p('TERMS & CONDITIONS',{bold:true,color:navy,size:20,after:40,before:100}));
   body.push(p('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:18}));
   body.push(p('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:18}));
