@@ -25,7 +25,7 @@ import {
   getInvoicePrefix,
 } from './financials.ts';
 import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin.ts';
-import { generateInvoiceHTML, generateQuotationPDF } from './pdf.ts';
+import { generateInvoiceHTML, generateQuotationPDF, generateQuotationWordDocument } from './pdf.ts';
 import { handleAccountingRequest } from './accounting.ts';
 
 // ------------------------------------------------------------------------------
@@ -1217,6 +1217,30 @@ export const worker = {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `inline; filename="${filename}"`,
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+
+      // Generate an editable Microsoft Word-compatible quotation document on demand.
+      if (url.pathname.match(/^\/api\/quotations\/[^/]+\/word$/) && method === 'GET') {
+        if (!(await checkAdminAuth(request, env))) return errorResponse('Unauthorized', 401);
+        const quoteId = url.pathname.split('/')[3];
+        const quote = await env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(quoteId).first<DBQuotation>();
+        if (!quote) return errorResponse('Quotation not found.', 404);
+        const settings = await env.DB.prepare('SELECT * FROM business_settings WHERE id = 1').first<BusinessSettings>();
+        if (!settings) return errorResponse('Business settings are not configured.', 503);
+        const itemRows = await env.DB.prepare(
+          'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY line_number ASC'
+        ).bind(quoteId).all<DBQuotationItem>();
+        if (!itemRows.results?.length) return errorResponse('Quotation has no line items.', 422);
+        const documentBytes = await generateQuotationWordDocument(settings, quote, itemRows.results);
+        const filename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.doc`;
+        return new Response(documentBytes, {
+          headers: {
+            'Content-Type': 'application/msword; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`,
             'Cache-Control': 'private, no-store',
             'X-Content-Type-Options': 'nosniff',
           },
