@@ -763,9 +763,9 @@ export async function generateQuotationWordDocument(
   const join=(parts:Uint8Array[])=>{const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){out.set(p,at);at+=p.length;}return out;};
   for(const file of files){
     const name=enc.encode(file.name), data=file.data, crc=crc32(data);
-    const local=join([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name]);
+    const local=join([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0x0021),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name]);
     chunks.push(local,data);
-    const dir=join([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
+    const dir=join([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0x0021),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
     central.push(dir);offset+=local.length+data.length;
   }
   const centralBytes=join(central), localBytes=join(chunks);
