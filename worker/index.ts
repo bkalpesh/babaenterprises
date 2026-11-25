@@ -1237,7 +1237,9 @@ export const worker = {
         if (!itemRows.results?.length) return errorResponse('Quotation has no line items.', 422);
         const documentBytes = await generateQuotationWordDocument(settings, quote, itemRows.results);
         const filename = `Quotation-${(quote.quotation_number || quote.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.doc`;
-        return new Response(documentBytes, {
+        const documentBuffer = new ArrayBuffer(documentBytes.byteLength);
+        new Uint8Array(documentBuffer).set(documentBytes);
+        return new Response(documentBuffer, {
           headers: {
             'Content-Type': 'application/msword; charset=utf-8',
             'Content-Disposition': `attachment; filename="${filename}"`,
