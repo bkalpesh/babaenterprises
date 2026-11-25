@@ -673,7 +673,7 @@ export async function generateQuotationWordDocument(
     settings.email || '',
     settings.website_url ? 'Website: ' + settings.website_url : ''
   ].filter(Boolean);
-  const buyerAddress = (quotation.buyer_address || 'Address not provided').split(/[,\\n]+/).map(v => v.trim()).filter(Boolean);
+  const buyerAddress = (quotation.buyer_address || 'Address not provided').split(/[,\n]+/).map(v => v.trim()).filter(Boolean);
   const buyerCompany = quotation.buyer_company && norm(quotation.buyer_company) !== norm(quotation.buyer_name) ? quotation.buyer_company : '';
   const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
   const body: string[] = [];
