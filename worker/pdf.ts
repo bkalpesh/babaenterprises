@@ -297,8 +297,7 @@ export function generateInvoiceHTML(
                 <div style="font-size: 8px; color: #64748b;">@${(it.cgst_rate_bps / 100)}%</div>
               </td>
               <td class="text-right">
-                <div>${(it.sgst_amount_paise / 100).toFixed(2)}</div>
-                <div style="font-size: 8px; color: #64748b;">@${(it.sgst_rate_bps / 100)}%</div>
+                <div>${(it.sgst_amount_paise / 100).toFixed(2)}</div>                <div style="font-size: 8px; color: #64748b;">@${(it.sgst_rate_bps / 100)}%</div>
               </td>
             ` : `
               <td class="text-right">
@@ -597,8 +596,7 @@ export async function generateQuotationPDF(
     totalLine('IGST' + (igstRateLabel ? ' (' + igstRateLabel + '):' : ':'), money(quotation.igst_amount_paise));
   } else {
     const cgstRateLabel = uniqueRateLabels(items.map(item => Number(item.cgst_rate_bps || 0)));
-    const sgstRateLabel = uniqueRateLabels(items.map(item => Number(item.sgst_rate_bps || 0)));
-    totalLine('CGST' + (cgstRateLabel ? ' (' + cgstRateLabel + '):' : ':'), money(quotation.cgst_amount_paise));
+    const sgstRateLabel = uniqueRateLabels(items.map(item => Number(item.sgst_rate_bps || 0)));    totalLine('CGST' + (cgstRateLabel ? ' (' + cgstRateLabel + '):' : ':'), money(quotation.cgst_amount_paise));
     totalLine('SGST' + (sgstRateLabel ? ' (' + sgstRateLabel + '):' : ':'), money(quotation.sgst_amount_paise));
   }
   totalLine('Total Tax:', money(quotation.total_tax_paise));
@@ -657,14 +655,6 @@ export async function generateQuotationWordDocument(
   const para = (value: unknown, options: { bold?: boolean; color?: string; size?: number; align?: string; after?: number } = {}) =>
     '<w:p><w:pPr><w:spacing w:after="' + (options.after ?? 80) + '"/>' + (options.align ? '<w:jc w:val="' + options.align + '"/>' : '') +
     '</w:pPr>' + run(value, !!options.bold, options.color || '1F2933', options.size || 18) + '</w:p>';
-  const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left') =>
-    '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/><w:shd w:fill="' + fill + '"/><w:tcMar><w:top w:w="70" w:type="dxa"/><w:left w:w="75" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>' +
-    (content.trimStart().startsWith('<w:p>') ? content : '<w:p><w:pPr><w:jc w:val="' + align + '"/></w:pPr>' + content + '</w:p>') + '</w:tc>';
-  const table = (rows: string[], widths: number[], borders = true) =>
-    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>' +
-    (borders ? '<w:tblBorders><w:top w:val="single" w:sz="5" w:color="AAB2BD"/><w:left w:val="single" w:sz="5" w:color="AAB2BD"/><w:bottom w:val="single" w:sz="5" w:color="AAB2BD"/><w:right w:val="single" w:sz="5" w:color="AAB2BD"/><w:insideH w:val="single" w:sz="4" w:color="D8DDE4"/><w:insideV w:val="single" w:sz="4" w:color="D8DDE4"/></w:tblBorders>' : '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>') +
-    '<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + widths.map(width => '<w:gridCol w:w="' + width + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
-  const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const seller = [
     settings.address_line1,
     [settings.address_line2, settings.city, settings.pincode, settings.state_name, 'India'].filter(Boolean).join(', '),
