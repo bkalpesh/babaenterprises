@@ -916,3 +916,5 @@ export async function generateQuotationWordDocument(
   if (view.getUint32(cursor, true) !== 0x02014b50 || view.getUint32(localBytes.length + centralBytes.length, true) !== 0x06054b50) {
     throw new Error('DOCX validation failed: ZIP central directory or end record is invalid.');
   }
+  return archive;
+}
