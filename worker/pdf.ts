@@ -656,15 +656,9 @@ export async function generateQuotationWordDocument(
   };
   const normalize = (value: string | null | undefined) =>
     (value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
-  const logoUrl = 'https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1';
-  const logoResponse = await fetch(logoUrl);
-  if (!logoResponse.ok) throw new Error('BABA Enterprises logo could not be loaded for quotation Word document generation.');
-  const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
-  let binary = '';
-  for (let offset = 0; offset < logoBytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...logoBytes.subarray(offset, Math.min(offset + 0x8000, logoBytes.length)));
-  }
-  const logoData = 'data:image/png;base64,' + btoa(binary);
+  // Microsoft Word's HTML import does not reliably render data: URI images.
+  // Use the public direct-download image URL so Word can retrieve the original PNG.
+  const logoData = 'https://www.dropbox.com/scl/fi/vzc5ok19d7qautvhloaaz/baba_logo.png?rlkey=wr5ex4l8l0aoqkuybnzdnm9yx&raw=1';
   const sellerLines = [
     settings.address_line1,
     [settings.address_line2, settings.city, settings.pincode, settings.state_name].filter(Boolean).join(', '),
