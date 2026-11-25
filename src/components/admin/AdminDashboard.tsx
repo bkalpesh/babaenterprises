@@ -1000,7 +1000,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                           {inv.status === 'Issued' && (
                             <>
-                              <button onClick={async () => { try { await ApiService.printInvoice(inv.id); } catch (err: any) { alert(`Failed to load invoice for printing: ${err.message}`); } }} className="min-h-10 rounded-lg bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700"><Printer className="mr-1 inline h-3.5 w-3.5" />Print</button>
+                              <button onClick={async () => { try { await ApiService.printInvoice(inv.id); } catch (err: any) { alert(`Failed to load invoice for printing: ${err.message}`); } }} className="min-h-10 rounded-lg bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700"><Printer className="mr-1 inline h-3.5 w-3.5" />PDF</button>
+                              <button onClick={async () => { const result = await ApiService.downloadInvoiceWord(inv.id, inv.invoice_number); if (!result.success) alert(`Unable to download invoice Word document: ${result.error}`); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><FileText className="mr-1 inline h-3.5 w-3.5" />Word</button>
                               <button onClick={async () => { const reason = window.prompt('Enter mandatory cancellation reason (min 5 characters):'); if (!reason || reason.trim().length < 5) { alert('Cancellation cancelled: Reason must be at least 5 characters.'); return; } const res = await ApiService.cancelInvoice(inv.id, reason.trim()); if (res.success) { alert('Invoice cancelled and permanently frozen in audit log.'); loadAllData(); } else { alert(`Error: ${res.error}`); } }} className="min-h-10 rounded-lg bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">Cancel</button>
                             </>
                           )}
@@ -1093,8 +1094,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       title="Print or Save PDF"
                                     >
                                       <Printer className="w-3.5 h-3.5" />
-                                      <span>Print</span>
+                                      <span>PDF</span>
                                     </button>
+                                    <button onClick={async () => { const result = await ApiService.downloadInvoiceWord(inv.id, inv.invoice_number); if (!result.success) alert(`Unable to download invoice Word document: ${result.error}`); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><FileText className="mr-1 inline h-3.5 w-3.5" />Word</button>
 
                                     <button
                                       onClick={async () => {

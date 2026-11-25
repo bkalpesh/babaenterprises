@@ -25,7 +25,7 @@ import {
   getInvoicePrefix,
 } from './financials.ts';
 import { validateGSTINChecksum, validateGSTINStateMatch } from './gstin.ts';
-import { generateInvoiceHTML, generateQuotationPDF, generateQuotationWordDocument } from './pdf.ts';
+import { generateInvoiceHTML, generateQuotationPDF, generateQuotationWordDocument, generateInvoiceWordDocument } from './pdf.ts';
 import { handleAccountingRequest } from './accounting.ts';
 
 // ------------------------------------------------------------------------------
@@ -3035,7 +3035,7 @@ export const worker = {
       }
 
       // PRINT-READY HTML INVOICE (Protected: Requires Admin Authorization)
-      if (url.pathname.match(/^\/api\/invoices\/[^/]+\/html$/) && method === 'GET') {
+      if (url.pathname.match(/^\/api\/invoices\/[^/]+\/(?:html|word)$/) && method === 'GET') {
         if (!(await checkAdminAuth(request, env))) {
           return errorResponse('Unauthorized: Administrative authorization required to view invoice HTML.', 401);
         }
@@ -3069,6 +3069,21 @@ export const worker = {
           .bind(invId)
           .all<DBInvoiceItem>();
 
+        if (url.pathname.endsWith('/word')) {
+          if (!env.ASSETS) return errorResponse('Static asset service is unavailable.', 503);
+          const logoResponse = await env.ASSETS.fetch(new Request(new URL('/assets/baba_enterprises_logo_horizontal.png', url.origin)));
+          if (!logoResponse.ok) return errorResponse('BABA Enterprises logo asset could not be loaded for the Word document.', 503);
+          const bytes = await generateInvoiceWordDocument(settings, invoice, items.results, new Uint8Array(await logoResponse.arrayBuffer()));
+          const buffer = new ArrayBuffer(bytes.byteLength);
+          new Uint8Array(buffer).set(bytes);
+          const filename = `Invoice-${(invoice.invoice_number || invoice.id).replace(/[^a-zA-Z0-9._-]/g, '-')}.docx`;
+          return new Response(buffer, { headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+          } });
+        }
         const html = generateInvoiceHTML(settings!, invoice, items.results);
         return new Response(html, {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },

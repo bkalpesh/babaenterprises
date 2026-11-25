@@ -924,3 +924,268 @@ export async function generateQuotationWordDocument(
   }
   return archive;
 }
+
+
+export async function generateInvoiceWordDocument(
+  settings: BusinessSettings,
+  invoice: DBInvoice,
+  items: DBInvoiceItem[],
+  logoBytes: Uint8Array
+): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const esc = (v: unknown) => Array.from(String(v ?? '')).filter(ch => { const cp = ch.codePointAt(0)!; return cp === 0x09 || cp === 0x0A || cp === 0x0D || (cp >= 0x20 && cp <= 0xD7FF) || (cp >= 0xE000 && cp <= 0xFFFD) || (cp >= 0x10000 && cp <= 0x10FFFF); }).join('').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const money = (p: number) => 'INR ' + (Number(p || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const norm = (v: string | null | undefined) => (v || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-IN');
+  const run = (value: unknown, bold = false, color = '1F2933', size = 18) =>
+    '<w:r><w:rPr>' + (bold ? '<w:b/>' : '') + '<w:color w:val="' + color + '"/><w:sz w:val="' + size + '"/></w:rPr><w:t xml:space="preserve">' + esc(value) + '</w:t></w:r>';
+  const seller = [
+    [settings.address_line1, settings.address_line2].filter(Boolean).join(', '),
+    [settings.city, settings.pincode, settings.state_name, 'India'].filter(Boolean).join(', '),
+    'GSTIN: ' + settings.gstin + ' | PAN: ' + settings.pan,
+    'State: ' + settings.state_name + ' (Code: ' + settings.state_code + ')',
+    'Phone: ' + [settings.phone_primary, settings.phone_secondary].filter(Boolean).join(' / '),
+    'Email: ' + settings.email,
+    settings.website_url ? 'Website: ' + settings.website_url : ''
+  ].filter(Boolean);
+  const buyerAddress = (invoice.buyer_address || 'Address not specified').split(/[,\n]+/).map(v=>v.trim()).filter(Boolean);
+  const buyerCompany = invoice.buyer_trade_name && norm(invoice.buyer_trade_name) !== norm(invoice.buyer_name) ? invoice.buyer_trade_name : '';
+  const interstate = invoice.is_interstate === 1;
+  const navy = '102F59', dark = '1F2933', muted = '616B78';
+  const p = (value: unknown, opts: {bold?:boolean;color?:string;size?:number;align?:string;after?:number;before?:number} = {}) =>
+    '<w:p><w:pPr><w:spacing w:before="' + (opts.before || 0) + '" w:after="' + (opts.after ?? 45) + '"/>' + (opts.align ? '<w:jc w:val="' + opts.align + '"/>' : '') +
+    '</w:pPr>' + run(value, !!opts.bold, opts.color || dark, opts.size || 18) + '</w:p>';
+  const pngView = new DataView(logoBytes.buffer, logoBytes.byteOffset, logoBytes.byteLength);
+  const logoWidth = 1952625;
+  const logoHeight = Math.round(logoWidth * pngView.getUint32(20) / pngView.getUint32(16));
+  const imagePara = '<w:p><w:pPr><w:spacing w:after="30"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + logoWidth + '" cy="' + logoHeight + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="BABA Enterprises Logo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="baba-logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + logoWidth + '" cy="' + logoHeight + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+  const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left', borders = '') =>
+    '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/>' +
+    (borders ? '<w:tcBorders>' + borders + '</w:tcBorders>' : '') +
+    (fill !== 'FFFFFF' ? '<w:shd w:val="clear" w:color="auto" w:fill="' + fill + '"/>' : '') +
+    '<w:tcMar><w:top w:w="' + (width >= 3590 && width <= 3591 ? 0 : 55) + '" w:type="dxa"/><w:left w:w="65" w:type="dxa"/><w:bottom w:w="' + (width >= 3590 && width <= 3591 ? 0 : 55) + '" w:type="dxa"/><w:right w:w="65" w:type="dxa"/></w:tcMar>' +
+    '</w:tcPr>' +
+    (content.trimStart().startsWith('<w:tbl') ? content + '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>' : content.trimStart().startsWith('<w:p') ? content : p(content,{align})) + '</w:tc>';
+  const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
+  const tbl = (rows: string[], widths: number[], borderColor = 'AAB2BD', borderSize = 4) =>
+    '<w:tbl><w:tblPr><w:tblW w:w="' + widths.reduce((a,b)=>a+b,0) + '" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>' +
+    '<w:tblBorders><w:top w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:left w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:bottom w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:right w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:insideH w:val="' + (borderSize ? 'single' : 'nil') + '" w:sz="3" w:color="D8DDE4"/><w:insideV w:val="' + (borderSize ? 'single' : 'nil') + '" w:sz="4" w:color="C7CBD1"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' +
+    widths.map(w => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
+  const borderNone = '<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>';
+  const body: string[] = [];
+  // Three-colour rule and thin frame reproduce the PDF's A4 stationery.
+  body.push(tbl([row([
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3591,'FF9933','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3591,'FFFFFF','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3590,'138808','left',borderNone)
+  ])],[3591,3591,3590],'FFFFFF',0));
+  const sellerContent = imagePara + seller.map(v => p(v,{size:16,color:'24364B',after:35})).join('');
+  const docContent = p(invoice.status === 'Draft' ? 'DRAFT TAX INVOICE' : invoice.status === 'Cancelled' ? 'CANCELLED TAX INVOICE' : 'TAX INVOICE',{bold:true,color:navy,size:30,after:100}) +
+    [
+      'Invoice No: ' + (invoice.invoice_number || 'DRAFT (Unissued)'),
+      'Invoice Date: ' + formatInvoiceDate(invoice.invoice_date),
+      'Financial Year: ' + invoice.financial_year,
+      'Place of Supply: ' + (invoice.place_of_supply || invoice.buyer_state_name + ' (' + invoice.buyer_state_code + ')'),
+      'Gate Pass Number: ' + (invoice.gate_pass_number || ''),
+      'Gate Pass Date: ' + formatInvoiceDate(invoice.gate_pass_date),
+      'Purchase Order Number: ' + (invoice.purchase_order_number || ''),
+      'Purchase Order Date: ' + formatInvoiceDate(invoice.purchase_order_date),
+      'Payment Status: ' + invoice.payment_status
+    ].map(v=>p(v,{size:16,after:35})).join('');
+  const headerBorder = '<w:top w:val="nil"/><w:left w:val="single" w:sz="8" w:color="0F172A"/><w:bottom w:val="single" w:sz="8" w:color="0F172A"/><w:right w:val="nil"/>';
+  body.push(tbl([row([
+    cell(sellerContent,6679,'FFFFFF','left'),
+    cell(docContent,4093,'F8FAFC','left',headerBorder)
+  ])],[6679,4093],'0F172A',8));
+  const locality = [invoice.buyer_city,invoice.buyer_state_name,invoice.buyer_pincode].filter(Boolean).join(', ');
+  const buyerLeft = p('BILL TO (BUYER DETAILS)',{bold:true,color:navy}) +
+    p(invoice.buyer_name || 'Cash / Retail Buyer',{bold:true}) +
+    (buyerCompany ? p(buyerCompany) : '') + buyerAddress.map(v=>p(v,{after:20})).join('') +
+    p(locality) + p('State: ' + (invoice.buyer_state_name || 'N/A') + ' (Code: ' + (invoice.buyer_state_code || 'N/A') + ')') +
+    p('GSTIN: ' + (invoice.buyer_gstin || 'URP (Unregistered)')) + p('AR Number: ' + (invoice.ar_number || ''));
+  const buyerRight = p('SHIP TO (DISPATCH DESTINATION)',{bold:true,color:navy}) +
+    p(invoice.buyer_name || 'Same as Bill To',{bold:true}) +
+    buyerAddress.map(v=>p(v,{after:20})).join('') + p(locality) +
+    p('Place of Supply: ' + (invoice.place_of_supply || invoice.buyer_state_name || 'Maharashtra (27)'));
+  body.push(tbl([row([cell(buyerLeft,5386),cell(buyerRight,5386)])],[5386,5386],'0F172A',8));
+  const headers = ['#','Description of Goods','HSN','Qty','Rate (INR)','Taxable (INR)',...(interstate?['IGST']:['CGST','SGST']),'Total (INR)'];
+  const widths = interstate ? [400,2872,850,1000,1300,1450,1300,1600] : [400,2472,800,900,1150,1250,1100,1100,1600];
+  const itemRows = [row(headers.map((h,i)=>cell(p(h,{bold:true,color:'FFFFFF',size:16,align:i===1?'left':'center',after:0}),widths[i],navy)))];
+  itemRows[0] = itemRows[0].replace('<w:tr>','<w:tr><w:trPr><w:tblHeader/></w:trPr>');
+  const amount = (v:number) => (v/100).toFixed(2);
+  const tax = (v:number,r:number) => p(amount(v),{size:16,align:'right',after:0}) + p('@'+r/100+'%',{size:14,color:muted,align:'right',after:0});
+  items.forEach((it,i)=>{
+    const vals = [p(i+1,{size:16,align:'center',after:0}),p(it.item_description,{bold:true,size:16,after:0}),p(it.hsn_code,{size:16,align:'center',after:0}),
+      p((it.quantity_microunits/1000000).toLocaleString('en-IN',{maximumFractionDigits:3})+' '+it.unit_of_measure,{size:16,align:'center',after:0}),
+      p(amount(it.unit_price_paise),{size:16,align:'right',after:0}),p(amount(it.taxable_amount_paise),{size:16,align:'right',after:0}),
+      ...(interstate?[tax(it.igst_amount_paise,it.igst_rate_bps)]:[tax(it.cgst_amount_paise,it.cgst_rate_bps),tax(it.sgst_amount_paise,it.sgst_rate_bps)]),
+      p(amount(it.total_amount_paise),{bold:true,size:16,align:'right',after:0})];
+    itemRows.push(row(vals.map((v,j)=>cell(v,widths[j],i%2?'F7F9FB':'FFFFFF'))).replace('<w:tr>','<w:tr><w:trPr><w:cantSplit/></w:trPr>'));
+  });
+  body.push(tbl(itemRows,widths,'64748B',4));
+  const summary: [string,string][] = [['Taxable Amount:',money(invoice.taxable_amount_paise)]];
+  if(interstate) summary.push(['IGST Total:',money(invoice.igst_amount_paise)]);
+  else summary.push(['CGST Total:',money(invoice.cgst_amount_paise)],['SGST Total:',money(invoice.sgst_amount_paise)]);
+  summary.push(['Total Tax:',money(invoice.total_tax_paise)]);
+  if(invoice.round_off_paise!==0) summary.push(['Round Off:',money(invoice.round_off_paise)]);
+  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:16,after:0}),2900),cell(p(v[1],{bold:true,size:16,align:'right',after:0}),1817)]));
+  summaryRows.push(row([cell(p('TOTAL AMOUNT',{bold:true,color:navy,size:18,after:0}),2900,'E0E6ED'),cell(p(money(invoice.total_invoice_amount_paise),{bold:true,color:navy,size:18,align:'right',after:0}),1817,'E0E6ED')]));
+  const bank = settings.bank_account_no ? p('Bank Remittance Details:',{bold:true,color:navy}) + p('Bank: '+(settings.bank_name || 'N/A')+', Branch: '+(settings.bank_branch || 'N/A')) + p('A/C No: '+settings.bank_account_no+', IFSC: '+(settings.bank_ifsc || 'N/A')) : p('Bank settlement details available on direct corporate confirmation.',{size:16,color:muted});
+  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy})+p(numberToWords(invoice.total_invoice_amount_paise))+bank,5925),cell(tbl(summaryRows,[2900,1817],'C7CBD1',4),4847)])],[5925,4847],'0F172A',8));
+  const terms = p('Terms & Conditions:',{bold:true,color:navy}) + p('1. Goods once sold will not be accepted back or exchanged without prior authorization.',{size:16}) +
+    (settings.default_payment_terms ? p('2. Payment terms: '+settings.default_payment_terms+'.',{size:16}) : '') +
+    (settings.default_invoice_notes ? p('3. '+settings.default_invoice_notes,{size:16}) : '') + p('This is a computer generated tax invoice.',{size:16});
+  body.push(tbl([row([cell(terms,5925,'F8FAFC'),cell(p('For '+settings.legal_name,{bold:true,color:navy,align:'center',after:560})+p('________________________',{align:'center',after:20})+p('Authorized Signatory',{bold:true,align:'center'}),4847,'F8FAFC')])],[5925,4847],'0F172A',8));
+  body.push(tbl([row([cell(p('Declaration:',{bold:true,color:navy,after:25})+p('We hereby certify that our GST registration is valid and in force on the date of supply of the goods specified in this tax invoice. We further declare that the particulars furnished in this invoice are true and correct, and the transaction covered herein shall be duly accounted for in the applicable GST returns. The tax payable on such supply has been paid or shall be paid in accordance with the applicable provisions of the Goods and Services Tax Acts, 2017, and the Rules made thereunder.',{size:16,after:30}),10772)])],[10772],'0F172A',8));
+  body.push(tbl([row([
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3591,'FF9933','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3591,'FFFFFF','left',borderNone),
+    cell('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="60" w:lineRule="exact"/></w:pPr></w:p>',3590,'138808','left',borderNone)
+  ])],[3591,3591,3590],'FFFFFF',0));
+  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="567" w:right="567" w:bottom="567" w:left="567" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>';
+  const files: {name:string;data:Uint8Array}[] = [
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')},
+    {name:'word/document.xml',data:enc.encode(documentXml)},
+    {name:'word/_rels/document.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')},
+    {name:'word/styles.xml',data:enc.encode(stylesXml)},
+    {name:'word/media/logo.png',data:logoBytes}
+  ];
+  // Validate every XML part for well-formed markup, escaped entities and namespace bindings.
+  const validateXmlPart = (xml: string, partName: string) => {
+    const stack: string[] = [];
+    // The xml prefix is predefined by the XML specification and need not be declared in each document.
+    const namespaceStack: Record<string, string>[] = [{ xml: 'http://www.w3.org/XML/1998/namespace' }];
+    const entityPattern = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);/g;
+    const checkEntities = (value: string) => {
+      if (value.replace(entityPattern, '').includes('&')) throw new Error('DOCX validation failed: invalid XML entity in ' + partName + '.');
+    };
+    let pos = 0;
+    while (pos < xml.length) {
+      if (xml[pos] !== '<') {
+        const next = xml.indexOf('<', pos);
+        const text = xml.slice(pos, next < 0 ? xml.length : next);
+        checkEntities(text);
+        if (text.includes(']]>')) throw new Error('DOCX validation failed: invalid XML character data in ' + partName + '.');
+        pos = next < 0 ? xml.length : next;
+        continue;
+      }
+      if (xml.startsWith('<?', pos)) {
+        const end = xml.indexOf('?>', pos + 2);
+        if (end < 0) throw new Error('DOCX validation failed: unterminated XML processing instruction in ' + partName + '.');
+        pos = end + 2;
+        continue;
+      }
+      if (xml.startsWith('<!--', pos)) {
+        const end = xml.indexOf('-->', pos + 4);
+        if (end < 0 || xml.slice(pos + 4, end).includes('--')) throw new Error('DOCX validation failed: malformed XML comment in ' + partName + '.');
+        pos = end + 3;
+        continue;
+      }
+      if (xml.startsWith('<![CDATA[', pos)) {
+        const end = xml.indexOf(']]>', pos + 9);
+        if (end < 0) throw new Error('DOCX validation failed: unterminated CDATA in ' + partName + '.');
+        pos = end + 3;
+        continue;
+      }
+      if (xml.startsWith('<!', pos)) throw new Error('DOCX validation failed: unsupported XML declaration in ' + partName + '.');
+      let end = pos + 1, quote = '';
+      for (; end < xml.length; end++) {
+        const ch = xml[end];
+        if (quote) { if (ch === quote) quote = ''; }
+        else if (ch === '"' || ch === "'") quote = ch;
+        else if (ch === '>') break;
+      }
+      if (end >= xml.length || quote) throw new Error('DOCX validation failed: unterminated XML tag in ' + partName + '.');
+      const raw = xml.slice(pos + 1, end);
+      const closing = raw.startsWith('/');
+      if (closing) {
+        const name = raw.slice(1).trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(name) || stack.pop() !== name) throw new Error('DOCX validation failed: mismatched XML closing tag in ' + partName + '.');
+        namespaceStack.pop();
+      } else {
+        const selfClosing = /\/\s*$/.test(raw);
+        const inner = selfClosing ? raw.replace(/\/\s*$/, '') : raw;
+        const nameMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)([\s\S]*)$/.exec(inner);
+        if (!nameMatch) throw new Error('DOCX validation failed: invalid XML element name in ' + partName + '.');
+        const name = nameMatch[1], rest = nameMatch[2];
+        const attrs: Record<string, string> = {};
+        let attrPos = 0;
+        while (attrPos < rest.length) {
+          while (/\s/.test(rest[attrPos] || '')) attrPos++;
+          if (attrPos >= rest.length) break;
+          const attrMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*("([^"]*)"|'([^']*)')/.exec(rest.slice(attrPos));
+          if (!attrMatch) throw new Error('DOCX validation failed: malformed XML attribute in ' + partName + '.');
+          const attrName = attrMatch[1], attrValue = attrMatch[3] ?? attrMatch[4] ?? '';
+          if (Object.prototype.hasOwnProperty.call(attrs, attrName) || attrValue.includes('<')) throw new Error('DOCX validation failed: duplicate or invalid XML attribute in ' + partName + '.');
+          checkEntities(attrValue);
+          attrs[attrName] = attrValue;
+          attrPos += attrMatch[0].length;
+        }
+        const ns = { ...namespaceStack[namespaceStack.length - 1] };
+        for (const [key, value] of Object.entries(attrs)) {
+          if (key === 'xmlns') ns[''] = value;
+          else if (key.startsWith('xmlns:')) ns[key.slice(6)] = value;
+        }
+        const checkQName = (qname: string, isAttribute = false) => {
+          const bits = qname.split(':');
+          if (bits.length > 2 || (bits.length === 2 && !ns[bits[0]]) || (bits.length === 1 && !isAttribute && !ns[''] && partName !== '[Content_Types].xml')) {
+            throw new Error('DOCX validation failed: unbound XML namespace prefix in ' + partName + '.');
+          }
+        };
+        checkQName(name);
+        for (const key of Object.keys(attrs)) if (key.includes(':') && !key.startsWith('xmlns:')) checkQName(key, true);
+        if (!selfClosing) { stack.push(name); namespaceStack.push(ns); }
+      }
+      pos = end + 1;
+    }
+    if (stack.length) throw new Error('DOCX validation failed: unclosed XML element in ' + partName + '.');
+  };
+  for (const file of files) {
+    if (file.name.endsWith('.xml') || file.name.endsWith('.rels')) validateXmlPart(new TextDecoder().decode(file.data), file.name);
+  }
+  const contentTypesXml = new TextDecoder().decode(files.find(file => file.name === '[Content_Types].xml')!.data);
+  const documentRelsXml = new TextDecoder().decode(files.find(file => file.name === 'word/_rels/document.xml.rels')!.data);
+  if (!contentTypesXml.includes('/word/document.xml') || !contentTypesXml.includes('/word/styles.xml') ||
+      !documentRelsXml.includes('Target="media/logo.png"') || !documentRelsXml.includes('Target="styles.xml"')) {
+    throw new Error('DOCX validation failed: required content types or document relationships are missing.');
+  }
+  if (logoBytes.length < 8 || logoBytes[0] !== 0x89 || logoBytes[1] !== 0x50 || logoBytes[2] !== 0x4E || logoBytes[3] !== 0x47) {
+    throw new Error('DOCX validation failed: embedded BABA logo is not a valid PNG image.');
+  }
+  const crcTable = new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);crcTable[n]=c>>>0;}
+  const crc32=(data:Uint8Array)=>{let c=0xFFFFFFFF;for(let i=0;i<data.length;i++)c=crcTable[(c^data[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+  const chunks:Uint8Array[]=[]; const central:Uint8Array[]=[]; let offset=0;
+  const u16=(v:number)=>{const a=new Uint8Array(2);new DataView(a.buffer).setUint16(0,v,true);return a;};
+  const u32=(v:number)=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0,true);return a;};
+  const join=(parts:Uint8Array[])=>{const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){out.set(p,at);at+=p.length;}return out;};
+  for(const file of files){
+    const name=enc.encode(file.name), data=file.data, crc=crc32(data);
+    const local=join([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0x0021),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name]);
+    chunks.push(local,data);
+    const dir=join([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0x0021),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
+    central.push(dir);offset+=local.length+data.length;
+  }
+  const centralBytes=join(central), localBytes=join(chunks);
+  const end=join([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBytes.length),u32(localBytes.length),u16(0)]);
+  const archive = join([localBytes,centralBytes,end]);
+  // Validate the ZIP local-file records and CRCs before returning a DOCX payload.
+  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  let cursor = 0;
+  for (const file of files) {
+    if (view.getUint32(cursor, true) !== 0x04034b50) throw new Error('DOCX validation failed: invalid ZIP local-file header.');
+    const nameLength = view.getUint16(cursor + 26, true), extraLength = view.getUint16(cursor + 28, true);
+    const size = view.getUint32(cursor + 18, true), expectedCrc = view.getUint32(cursor + 14, true);
+    const name = new TextDecoder().decode(archive.subarray(cursor + 30, cursor + 30 + nameLength));
+    if (name !== file.name || size !== file.data.length) throw new Error('DOCX validation failed: ZIP entry name or size mismatch.');
+    const dataStart = cursor + 30 + nameLength + extraLength;
+    const data = archive.subarray(dataStart, dataStart + size);
+    if (crc32(data) !== expectedCrc) throw new Error('DOCX validation failed: ZIP entry CRC mismatch for ' + name + '.');
+    cursor = dataStart + size;
+  }
+  if (view.getUint32(cursor, true) !== 0x02014b50 || view.getUint32(localBytes.length + centralBytes.length, true) !== 0x06054b50) {
+    throw new Error('DOCX validation failed: ZIP central directory or end record is invalid.');
+  }
+  return archive;
+}

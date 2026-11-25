@@ -719,6 +719,34 @@ export const ApiService = {
     return await res.text();
   },
 
+  async downloadInvoiceWord(id: string, invoiceNumber?: string | null): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${encodeURIComponent(id)}/word`, {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        return { success: false, error: data.error || `Word document request failed (HTTP ${res.status}).` };
+      }
+      const blob = await res.blob();
+      if (!blob.size || !/application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/msword|application\/octet-stream/i.test(blob.type)) {
+        return { success: false, error: 'The server did not return a Word document.' };
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const safeNumber = (invoiceNumber || id).replace(/[^a-zA-Z0-9._-]/g, '-');
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `Invoice-${safeNumber}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Unable to download invoice Word document.' };
+    }
+  },
+
   async printInvoice(invoiceId: string): Promise<void> {
     const html = await this.getInvoiceHtml(invoiceId);
     if (typeof window === 'undefined') return;
