@@ -757,7 +757,8 @@ export async function generateQuotationWordDocument(
   // Validate every XML part for well-formed markup, escaped entities and namespace bindings.
   const validateXmlPart = (xml: string, partName: string) => {
     const stack: string[] = [];
-    const namespaceStack: Record<string, string>[] = [{}];
+    // The xml prefix is predefined by the XML specification and need not be declared in each document.
+    const namespaceStack: Record<string, string>[] = [{ xml: 'http://www.w3.org/XML/1998/namespace' }];
     const entityPattern = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);/g;
     const checkEntities = (value: string) => {
       if (value.replace(entityPattern, '').includes('&')) throw new Error('DOCX validation failed: invalid XML entity in ' + partName + '.');
