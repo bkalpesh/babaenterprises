@@ -697,10 +697,10 @@ export async function generateQuotationWordDocument(
   const body: string[] = [];
   // Three-colour rule and thin frame reproduce the PDF's A4 stationery.
   body.push(tbl([row([
-    cell(p('',{size:2,after:0}),3150,'FF9933','left',borderNone),
-    cell(p('',{size:2,after:0}),3150,'FFFFFF','left',borderNone),
-    cell(p('',{size:2,after:0}),3150,'138808','left',borderNone)
-  ])],[3150,3150,3150],'FFFFFF',0));
+    cell(p('',{size:2,after:0}),3590,'FF9933','left',borderNone),
+    cell(p('',{size:2,after:0}),3590,'FFFFFF','left',borderNone),
+    cell(p('',{size:2,after:0}),3590,'138808','left',borderNone)
+  ])],[3590,3590,3590],'FFFFFF',0));
   const sellerContent = imagePara + seller.map(v => p(v,{size:11,color:'24364B',after:22})).join('');
   const docContent = p('QUOTATION',{bold:true,color:navy,size:30,after:90}) +
     p('Quotation No: ' + (quotation.quotation_number || 'DRAFT'),{size:12,after:45}) +
@@ -708,9 +708,9 @@ export async function generateQuotationWordDocument(
     p('Valid Until: ' + date(quotation.valid_until),{size:12,after:45});
   const headerBorder = '<w:top w:val="nil"/><w:left w:val="single" w:sz="8" w:color="0F172A"/><w:bottom w:val="single" w:sz="8" w:color="0F172A"/><w:right w:val="nil"/>';
   body.push(tbl([row([
-    cell(sellerContent,5700,'FFFFFF','left'),
-    cell(docContent,3600,'F8FAFC','left',headerBorder)
-  ])],[5700,3600],'0F172A',8));
+    cell(sellerContent,6460,'FFFFFF','left'),
+    cell(docContent,4310,'F8FAFC','left',headerBorder)
+  ])],[6460,4310],'0F172A',8));
   const buyerLeft = [
     p('QUOTATION TO',{bold:true,color:navy,size:16,after:55}),
     p(quotation.buyer_name || '',{bold:true,size:19,after:35}),
@@ -727,11 +727,11 @@ export async function generateQuotationWordDocument(
     ...(quotation.ar_number ? [p('AR Number: ' + quotation.ar_number,{size:14})] : [])
   ].join('');
   body.push(tbl([row([
-    cell(buyerLeft,5700,'FFFFFF','left','<w:right w:val="single" w:sz="8" w:color="0F172A"/>'),
-    cell(buyerRight,3600,'FFFFFF','left')
+    cell(buyerLeft,6460,'FFFFFF','left','<w:right w:val="single" w:sz="8" w:color="0F172A"/>'),
+    cell(buyerRight,4310,'FFFFFF','left')
   ])],[5700,3600],'0F172A',8));
   const headers = ['#','Description','HSN','Qty','Rate (INR)','GST %','Amount'];
-  const widths = [350,3650,700,1050,1100,800,1650];
+  const widths = [405,4230,810,1215,1275,925,1915];
   const itemRows = [row(headers.map((h,i)=>cell(p(h,{bold:true,color:'FFFFFF',size:13,align:i===1?'left':'center',after:0}),widths[i],navy,i===1?'left':'center')))];
   items.forEach((item,i)=>{
     const vals = [
@@ -757,10 +757,10 @@ export async function generateQuotationWordDocument(
   }
   summary.push(['Total Tax:',money(quotation.total_tax_paise)]);
   if(Number(quotation.round_off_paise||0)!==0) summary.push(['Round Off:',money(quotation.round_off_paise)]);
-  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:13,after:0}),5100),cell(p(v[1],{bold:true,size:13,align:'right',after:0}),3000,'FFFFFF','right')]));
+  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:13,after:0}),5900),cell(p(v[1],{bold:true,size:13,align:'right',after:0}),4870,'FFFFFF','right')]));
   summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:16,after:0}),5100,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:16,align:'right',after:0}),3000,'E0E6ED','right')]));
   body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:13,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:true,size:14,after:0}),5700),cell('',3600)])],[5700,3600],'FFFFFF',0));
-  body.push(tbl(summaryRows,[5100,3000],'FFFFFF',0));
+  body.push(tbl(summaryRows,[5900,4870],'FFFFFF',0));
   body.push(p('TERMS & CONDITIONS',{bold:true,color:navy,size:15,after:40,before:100}));
   body.push(p('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:13}));
   body.push(p('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:13}));
@@ -778,7 +778,7 @@ export async function generateQuotationWordDocument(
     cell(p('',{size:2,after:0}),3150,'FFFFFF','left',borderNone),
     cell(p('',{size:2,after:0}),3150,'138808','left',borderNone)
   ])],[3150,3150,3150],'FFFFFF',0));
-  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="794" w:right="680" w:bottom="794" w:left="680" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="680" w:right="567" w:bottom="680" w:left="567" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
   const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>';
   const files: {name:string;data:Uint8Array}[] = [
     {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')},
