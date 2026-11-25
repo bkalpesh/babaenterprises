@@ -545,7 +545,7 @@ export const ApiService = {
         return { success: false, error: data.error || `Word document request failed (HTTP ${res.status}).` };
       }
       const blob = await res.blob();
-      if (!blob.size || !/application\/msword|application\/octet-stream/i.test(blob.type)) {
+      if (!blob.size || !/application\\/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document|application\\/msword|application\\/octet-stream/i.test(blob.type)) {
         return { success: false, error: 'The server did not return a Word document.' };
       }
       const objectUrl = URL.createObjectURL(blob);
