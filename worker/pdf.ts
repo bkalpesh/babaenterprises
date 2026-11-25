@@ -98,7 +98,7 @@ export function generateInvoiceHTML(
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tax Invoice - ${invoice.invoice_number || 'DRAFT'}</title>
+  <title>Invoice-${(invoice.invoice_number || 'DRAFT').replace(/[^a-zA-Z0-9._-]/g, '-')}</title>
   <style>
     @page { size: A4 portrait; margin: 12mm 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }

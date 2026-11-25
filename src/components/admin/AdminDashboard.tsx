@@ -801,7 +801,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Quotation number</p><p className="mt-1 break-all font-mono text-sm font-bold text-[#102F59]">{q.quotation_number || 'Draft quotation'}</p></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${q.status === 'Converted' ? 'bg-purple-100 text-purple-800' : q.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>{q.status}</span></div>
                         <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-xs"><div className="flex justify-between gap-3"><span className="text-slate-500">Date</span><span className="text-right text-slate-800">{q.quotation_date || '—'}</span></div><div><p className="text-slate-500">Buyer</p><p className="break-words font-semibold text-slate-900">{q.buyer_name || '—'}</p>{q.buyer_company && <p className="break-words text-slate-500">{q.buyer_company}</p>}</div><div className="flex justify-between gap-3"><span className="text-slate-500">Taxable</span><span className="font-mono">₹{(q.taxable_amount_paise / 100).toFixed(2)}</span></div><div className="flex justify-between gap-3 border-t border-slate-100 pt-2"><span className="font-semibold text-slate-600">Total</span><span className="font-mono font-bold text-slate-900">₹{(q.total_amount_paise / 100).toFixed(2)}</span></div></div>
                         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                          <button onClick={async () => { const result = await ApiService.openQuotationPdf(q.id); if (!result.success) alert(`Unable to open quotation PDF: ${result.error}`); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><FileText className="mr-1 inline h-3.5 w-3.5" />PDF</button>
+                          <button onClick={async () => { const result = await ApiService.downloadQuotationPdf(q.id, q.quotation_number); if (!result.success) alert(`Unable to download quotation PDF: ${result.error}`); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><FileText className="mr-1 inline h-3.5 w-3.5" />PDF</button>
                           <button onClick={async () => { const result = await ApiService.downloadQuotationWord(q.id, q.quotation_number); if (!result.success) alert(`Unable to download quotation Word document: ${result.error}`); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><FileText className="mr-1 inline h-3.5 w-3.5" />Word</button>
                           {q.status !== 'Converted' && <button onClick={() => { setEditingQuotation(q); setIsQuotationModalOpen(true); }} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700"><Edit2 className="mr-1 inline h-3.5 w-3.5" />Edit</button>}
                           {(q.status === 'Draft' || q.status === 'Sent') && <button onClick={() => setStatusManagingQuotation(q)} className="min-h-10 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-[#0755A5]">{q.status === 'Draft' ? 'Dispatch' : 'Record decision'}</button>}
@@ -847,11 +847,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={async () => {
-                                    const result = await ApiService.openQuotationPdf(q.id);
-                                    if (!result.success) alert(`Unable to open quotation PDF: ${result.error}`);
+                                    const result = await ApiService.downloadQuotationPdf(q.id, q.quotation_number);
+                                    if (!result.success) alert(`Unable to download quotation PDF: ${result.error}`);
                                   }}
                                   className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded flex items-center gap-1 transition-colors"
-                                  title="Preview or generate saved quotation PDF"
+                                  title="Download quotation PDF"
                                 >
                                   <FileText className="w-3 h-3" />
                                   <span>PDF</span>

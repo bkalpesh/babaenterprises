@@ -535,6 +535,34 @@ export const ApiService = {
     }
   },
 
+  async downloadQuotationPdf(id: string, quotationNumber?: string | null): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/quotations/${encodeURIComponent(id)}/pdf`, {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        return { success: false, error: data.error || `PDF request failed (HTTP ${res.status}).` };
+      }
+      const blob = await res.blob();
+      if (!blob.size || !/application\/pdf/i.test(blob.type)) {
+        return { success: false, error: 'The server did not return a PDF.' };
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const safeNumber = (quotationNumber || id).replace(/[^a-zA-Z0-9._-]/g, '-');
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `Quotation-${safeNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Unable to download quotation PDF.' };
+    }
+  },
+
   async downloadQuotationWord(id: string, quotationNumber?: string | null): Promise<{ success: boolean; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/quotations/${encodeURIComponent(id)}/word`, {
