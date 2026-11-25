@@ -665,14 +665,14 @@ export async function generateQuotationWordDocument(
     settings.email || '',
     settings.website_url ? 'Website: ' + settings.website_url : ''
   ].filter(Boolean);
-  const buyerAddress = (quotation.buyer_address || 'Address not provided').split(/[,\\n]+/).map(v => v.trim()).filter(Boolean);
+  const buyerAddress = (quotation.buyer_address || 'Address not provided').split(/\r?\n/).map(v => v.trim()).filter(Boolean);
   const buyerCompany = quotation.buyer_company && norm(quotation.buyer_company) !== norm(quotation.buyer_name) ? quotation.buyer_company : '';
   const stateLabel = [quotation.buyer_state_name, quotation.buyer_state_code].filter(Boolean).join(' (') + (quotation.buyer_state_code ? ')' : '');
   const navy = '102F59', dark = '1F2933', muted = '616B78', light = 'F0F2F5';
   const p = (value: unknown, opts: {bold?:boolean;color?:string;size?:number;align?:string;after?:number;before?:number} = {}) =>
     '<w:p><w:pPr>' + (opts.align ? '<w:jc w:val="' + opts.align + '"/>' : '') +
     '<w:spacing w:before="' + (opts.before || 0) + '" w:after="' + (opts.after ?? 45) + '"/>' +
-    '</w:pPr>' + run(value, !!opts.bold, opts.color || dark, opts.size || 15) + '</w:p>';
+    '</w:pPr>' + run(value, !!opts.bold, opts.color || dark, opts.size || 18) + '</w:p>';
   const imagePara = '<w:p><w:pPr><w:spacing w:after="30"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2619375" cy="857250"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="BABA Enterprises Logo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="baba-logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2619375" cy="857250"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
   const cell = (content: string, width: number, fill = 'FFFFFF', align = 'left', borders = '') =>
     '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/>' +
@@ -682,49 +682,49 @@ export async function generateQuotationWordDocument(
     (content.trimStart().startsWith('<w:p') ? content : p(content,{align})) + '</w:tc>';
   const row = (cells: string[]) => '<w:tr>' + cells.join('') + '</w:tr>';
   const tbl = (rows: string[], widths: number[], borderColor = 'AAB2BD', borderSize = 4) =>
-    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblInd w:w="0" w:type="dxa"/>' +
+    '<w:tbl><w:tblPr><w:tblW w:w="' + widths.reduce((a,b)=>a+b,0) + '" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>' +
     '<w:tblBorders><w:top w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:left w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:bottom w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:right w:val="single" w:sz="' + borderSize + '" w:color="' + borderColor + '"/><w:insideH w:val="single" w:sz="3" w:color="D8DDE4"/><w:insideV w:val="single" w:sz="3" w:color="D8DDE4"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' +
     widths.map(w => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>' + rows.join('') + '</w:tbl>';
   const borderNone = '<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>';
   const body: string[] = [];
   // Three-colour rule and thin frame reproduce the PDF's A4 stationery.
   body.push(tbl([row([
-    cell(p('',{size:2,after:0}),3590,'FF9933','left',borderNone),
-    cell(p('',{size:2,after:0}),3590,'FFFFFF','left',borderNone),
+    cell(p('',{size:2,after:0}),3591,'FF9933','left',borderNone),
+    cell(p('',{size:2,after:0}),3591,'FFFFFF','left',borderNone),
     cell(p('',{size:2,after:0}),3590,'138808','left',borderNone)
-  ])],[3590,3590,3590],'FFFFFF',0));
-  const sellerContent = imagePara + seller.map(v => p(v,{size:11,color:'24364B',after:22})).join('');
-  const docContent = p('QUOTATION',{bold:true,color:navy,size:30,after:90}) +
-    p('Quotation No: ' + (quotation.quotation_number || 'DRAFT'),{size:12,after:45}) +
-    p('Date: ' + date(quotation.quotation_date),{size:12,after:45}) +
-    p('Valid Until: ' + date(quotation.valid_until),{size:12,after:45});
+  ])],[3591,3591,3590],'FFFFFF',0));
+  const sellerContent = imagePara + seller.map(v => p(v,{size:18,color:'24364B',after:22})).join('');
+  const docContent = p('QUOTATION',{bold:true,color:navy,size:38,after:90}) +
+    p('Quotation No: ' + (quotation.quotation_number || 'DRAFT'),{size:18,after:45}) +
+    p('Date: ' + date(quotation.quotation_date),{size:18,after:45}) +
+    p('Valid Until: ' + date(quotation.valid_until),{size:18,after:45});
   const headerBorder = '<w:top w:val="nil"/><w:left w:val="single" w:sz="8" w:color="0F172A"/><w:bottom w:val="single" w:sz="8" w:color="0F172A"/><w:right w:val="nil"/>';
   body.push(tbl([row([
-    cell(sellerContent,6460,'FFFFFF','left'),
-    cell(docContent,4310,'F8FAFC','left',headerBorder)
-  ])],[6460,4310],'0F172A',8));
+    cell(sellerContent,6463,'FFFFFF','left'),
+    cell(docContent,4309,'F8FAFC','left',headerBorder)
+  ])],[6463,4309],'0F172A',8));
   const buyerLeft = [
-    p('QUOTATION TO',{bold:true,color:navy,size:16,after:55}),
+    p('QUOTATION TO',{bold:true,color:navy,size:20,after:55}),
     p(quotation.buyer_name || '',{bold:true,size:19,after:35}),
-    ...(buyerCompany ? [p(buyerCompany,{size:14,after:25})] : []),
-    ...buyerAddress.map(v=>p(v,{size:14,after:20})),
-    p([quotation.buyer_city,quotation.buyer_state_name,quotation.buyer_pincode].filter(Boolean).join(', '),{size:14,after:20})
+    ...(buyerCompany ? [p(buyerCompany,{size:18,after:25})] : []),
+    ...buyerAddress.map(v=>p(v,{size:18,after:20})),
+    p([quotation.buyer_city,quotation.buyer_state_name,quotation.buyer_pincode].filter(Boolean).join(', '),{size:18,after:20})
   ].join('');
   const buyerRight = [
-    p('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'),{size:14}),
-    p('State: ' + stateLabel,{size:14}),
-    p('Contact: ' + (quotation.buyer_contact_person || '-'),{size:14}),
-    p('Phone: ' + (quotation.buyer_phone || '-'),{size:14}),
-    p('Email: ' + (quotation.buyer_email || '-'),{size:14}),
-    ...(quotation.ar_number ? [p('AR Number: ' + quotation.ar_number,{size:14})] : [])
+    p('GSTIN: ' + (quotation.buyer_gstin || 'Unregistered'),{size:18}),
+    p('State: ' + stateLabel,{size:18}),
+    ...(quotation.buyer_contact_person ? [p('Contact: ' + quotation.buyer_contact_person,{size:18})] : []),
+    ...(quotation.buyer_phone ? [p('Phone: ' + quotation.buyer_phone,{size:18})] : []),
+    ...(quotation.buyer_email ? [p('Email: ' + quotation.buyer_email,{size:18})] : []),
+    ...(quotation.ar_number ? [p('AR Number: ' + quotation.ar_number,{size:18})] : [])
   ].join('');
   body.push(tbl([row([
-    cell(buyerLeft,6460,'FFFFFF','left','<w:right w:val="single" w:sz="8" w:color="0F172A"/>'),
-    cell(buyerRight,4310,'FFFFFF','left')
-  ])],[5700,3600],'0F172A',8));
+    cell(buyerLeft,5925,'FFFFFF','left','<w:right w:val="single" w:sz="8" w:color="0F172A"/>'),
+    cell(buyerRight,4847,'FFFFFF','left')
+  ]) ],[5925,4847],'0F172A',8));
   const headers = ['#','Description','HSN','Qty','Rate (INR)','GST %','Amount'];
-  const widths = [405,4230,810,1215,1275,925,1915];
-  const itemRows = [row(headers.map((h,i)=>cell(p(h,{bold:true,color:'FFFFFF',size:13,align:i===1?'left':'center',after:0}),widths[i],navy,i===1?'left':'center')))];
+  const widths = [431,4093,1077,1077,1400,1077,1617];
+  const itemRows = [row(headers.map((h,i)=>cell(p(h,{bold:true,color:'FFFFFF',size:18,align:i===1?'left':'center',after:0}),widths[i],navy,i===1?'left':'center')))];
   items.forEach((item,i)=>{
     const vals = [
       String(i+1),item.item_description,item.hsn_code || '-',
@@ -733,7 +733,7 @@ export async function generateQuotationWordDocument(
       item.gst_rate_bps===null || item.gst_rate_bps===undefined ? '-' : (Number(item.gst_rate_bps)/100).toFixed(2)+'%',
       (Number(item.total_amount_paise)/100).toFixed(2)
     ];
-    itemRows.push(row(vals.map((v,j)=>cell(p(v,{bold:j===6,size:13,align:j===1?'left':(j===0||j===2||j===5?'center':'right'),after:0}),widths[j],i%2?'F7F9FB':'FFFFFF',j===1?'left':(j===0||j===2||j===5?'center':'right')))));
+    itemRows.push(row(vals.map((v,j)=>cell(p(v,{bold:j===6,size:18,align:j===1?'left':(j===0||j===2||j===5?'center':'right'),after:0}),widths[j],i%2?'F7F9FB':'FFFFFF',j===1?'left':(j===0||j===2||j===5?'center':'right')))));
   });
   body.push(tbl(itemRows,widths,'0F172A',5));
   const summary: [string,string][] = [
@@ -749,28 +749,28 @@ export async function generateQuotationWordDocument(
   }
   summary.push(['Total Tax:',money(quotation.total_tax_paise)]);
   if(Number(quotation.round_off_paise||0)!==0) summary.push(['Round Off:',money(quotation.round_off_paise)]);
-  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:13,after:0}),5900),cell(p(v[1],{bold:true,size:13,align:'right',after:0}),4870,'FFFFFF','right')]));
-  summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:16,after:0}),5100,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:16,align:'right',after:0}),3000,'E0E6ED','right')]));
-  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:13,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:true,size:14,after:0}),5700),cell('',3600)])],[5700,3600],'FFFFFF',0));
-  body.push(tbl(summaryRows,[5900,4870],'FFFFFF',0));
-  body.push(p('TERMS & CONDITIONS',{bold:true,color:navy,size:15,after:40,before:100}));
-  body.push(p('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:13}));
-  body.push(p('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:13}));
-  if(quotation.notes) body.push(p('Notes: '+quotation.notes,{size:13}));
+  const summaryRows = summary.map(v=>row([cell(p(v[0],{size:18,after:0}),5925),cell(p(v[1],{bold:true,size:18,align:'right',after:0}),4847,'FFFFFF','right')]));
+  summaryRows.push(row([cell(p('GRAND TOTAL',{bold:true,color:navy,size:20,after:0}),5925,'E0E6ED'),cell(p(money(quotation.total_amount_paise),{bold:true,color:navy,size:20,align:'right',after:0}),4847,'E0E6ED','right')]));
+  body.push(tbl([row([cell(p('Amount Chargeable (in words):',{bold:true,color:navy,size:18,after:20}) + p(numberToWords(Number(quotation.total_amount_paise||0)),{bold:true,size:18,after:0}),5925),cell('',4847)]) ],[5925,4847],'FFFFFF',0));
+  body.push(tbl(summaryRows,[5925,4847],'FFFFFF',0));
+  body.push(p('TERMS & CONDITIONS',{bold:true,color:navy,size:20,after:40,before:100}));
+  body.push(p('Payment Terms: '+(quotation.payment_terms||settings.default_payment_terms||'As mutually agreed'),{size:18}));
+  body.push(p('Delivery Terms: '+(quotation.delivery_terms||'As mutually agreed'),{size:18}));
+  if(quotation.notes) body.push(p('Notes: '+quotation.notes,{size:18}));
   body.push(tbl([row([
-    cell(p('Customer Acceptance',{bold:true,color:navy,size:14,after:500}) + p('________________________________________',{size:13,after:0}),4500),
-    cell(p('For '+(settings.legal_name||'BABA ENTERPRISES'),{bold:true,color:navy,size:14,align:'center',after:500}) + p('Authorized Signatory',{size:13,align:'center'}),4500)
-  ])],[4500,4500],'FFFFFF',0));
+    cell(p('Customer Acceptance',{bold:true,color:navy,size:18,after:500}) + p('________________________________________',{size:18,after:0}),5386),
+    cell(p('For '+(settings.legal_name||'BABA ENTERPRISES'),{bold:true,color:navy,size:18,align:'center',after:500}) + p('Authorized Signatory',{size:18,align:'center'}),5386)
+  ])],[5386,5386],'FFFFFF',0));
   const declaration='We hereby confirm that the prices and particulars mentioned in this quotation are true and correct to the best of our knowledge. This quotation is subject to the stated terms and conditions. Applicable taxes shall be charged in accordance with prevailing GST regulations. This quotation is not a tax invoice and cannot be used to claim Input Tax Credit (ITC).';
-  body.push(p('DECLARATION',{bold:true,color:navy,size:14,after:25,before:70}));
-  body.push(p(declaration,{size:12,after:60}));
-  body.push(p('This is a computer-generated quotation.',{size:11,color:muted,after:40}));
+  body.push(p('DECLARATION',{bold:true,color:navy,size:18,after:25,before:70}));
+  body.push(p(declaration,{size:18,after:60}));
+  body.push(p('This is a computer-generated quotation.',{size:18,color:muted,after:40}));
   body.push(tbl([row([
-    cell(p('',{size:2,after:0}),3150,'FF9933','left',borderNone),
-    cell(p('',{size:2,after:0}),3150,'FFFFFF','left',borderNone),
-    cell(p('',{size:2,after:0}),3150,'138808','left',borderNone)
-  ])],[3150,3150,3150],'FFFFFF',0));
-  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="680" w:right="567" w:bottom="680" w:left="567" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
+    cell(p('',{size:2,after:0}),3591,'FF9933','left',borderNone),
+    cell(p('',{size:2,after:0}),3591,'FFFFFF','left',borderNone),
+    cell(p('',{size:2,after:0}),3590,'138808','left',borderNone)
+  ])],[3591,3591,3590],'FFFFFF',0));
+  const documentXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="567" w:right="567" w:bottom="567" w:left="567" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>';
   const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>';
   const files: {name:string;data:Uint8Array}[] = [
     {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')},
